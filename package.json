@@ -1,0 +1,34 @@
+{
+  "name": "mypodpro",
+  "version": "1.0.0",
+  "description": "myPod Pro - Lossless Streaming & Retro iPod Music Player with Cover Flow, Neon DB & BetterAuth",
+  "main": "index.js",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
+  "keywords": [
+    "mypod",
+    "ipod",
+    "music-player",
+    "nextjs",
+    "lossless-streaming"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@neondatabase/serverless": "^1.2.0",
+    "better-auth": "^1.7.18",
+    "gsap": "^3.15.1",
+    "lenis": "^1.3.27",
+    "lucide-react": "^1.38.0",
+    "next": "^16.4.5",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "youtubei.js": "^18.3.0"
+  },
+  "devDependencies": {
+    "puppeteer": "^25.16.0"
+  }
+}

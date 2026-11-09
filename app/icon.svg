@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <rect width="32" height="32" rx="7" fill="#0f172a"/>
+  <!-- iPod Screen -->
+  <rect x="6" y="5" width="20" height="11" rx="2" fill="#38bdf8"/>
+  <rect x="8" y="7" width="8" height="2" rx="1" fill="#0369a1"/>
+  <!-- Clickwheel Outer -->
+  <circle cx="16" cy="23" r="6" fill="#1e293b"/>
+  <!-- Clickwheel Center Button -->
+  <circle cx="16" cy="23" r="2.2" fill="#38bdf8"/>
+</svg>

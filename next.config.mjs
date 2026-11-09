@@ -49,8 +49,29 @@ const nextConfig = {
         source: '/audio/:path*',
         headers: [
           {
+            key: 'Access-Control-Allow-Origin',
+            value: '*'
+          },
+          {
             key: 'Cache-Control',
             value: 'public, max-age=31536000, immutable'
+          }
+        ]
+      },
+      {
+        source: '/api/:path*',
+        headers: [
+          {
+            key: 'Access-Control-Allow-Origin',
+            value: '*'
+          },
+          {
+            key: 'Access-Control-Allow-Methods',
+            value: 'GET, POST, OPTIONS, HEAD'
+          },
+          {
+            key: 'Access-Control-Allow-Headers',
+            value: 'Range, Content-Type, Authorization, Accept-Ranges'
           }
         ]
       }

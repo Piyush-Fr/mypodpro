@@ -293,10 +293,13 @@ export default function MusicPlayerApp() {
     try {
       if (audioRef.current) {
         audioRef.current.pause();
-        audioRef.current.src = '';
+        audioRef.current.removeAttribute('src');
+        audioRef.current.load();
       }
       setIsPlaying(false);
       setCurrentTrack(null);
+      setCurrentTime(0);
+      setDuration(0);
     } catch {}
 
     try {
@@ -676,14 +679,32 @@ export default function MusicPlayerApp() {
         targetSrc = `/api/stream/proxy?id=${track.id}&quality=${settings.streamingQuality}`;
       }
 
-      if (audio.src !== targetSrc && !audio.src.endsWith(targetSrc)) {
-        audio.src = targetSrc;
+      // Resume AudioContext if suspended
+      if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+        audioContextRef.current.resume().catch(() => {});
       }
-      audio.currentTime = 0;
+
+      // Load new source cleanly if different, error state, or unassigned
+      const isSameSrc = audio.src === targetSrc || audio.src.endsWith(targetSrc);
+      if (!isSameSrc || audio.error !== null || !audio.hasAttribute('src')) {
+        audio.src = targetSrc;
+        audio.load();
+      }
+
       audio.playbackRate = settings.playbackSpeed || 1.0;
 
+      // Reset fade gain node to 1.0 immediately
       if (fadeGainRef.current) {
-        fadeGainRef.current.gain.value = 1.0;
+        try {
+          if (audioContextRef.current) {
+            fadeGainRef.current.gain.cancelScheduledValues(audioContextRef.current.currentTime);
+            fadeGainRef.current.gain.setValueAtTime(1.0, audioContextRef.current.currentTime);
+          } else {
+            fadeGainRef.current.gain.value = 1.0;
+          }
+        } catch {
+          fadeGainRef.current.gain.value = 1.0;
+        }
       }
 
       // Autoplay immediately with high fidelity
@@ -692,9 +713,6 @@ export default function MusicPlayerApp() {
         playPromise
           .then(() => {
             setIsPlaying(true);
-            if (fadeGainRef.current) {
-              fadeGainRef.current.gain.value = 1.0;
-            }
           })
           .catch((err) => {
             console.warn('Playback error / Autoplay note:', err.message);
@@ -821,13 +839,29 @@ export default function MusicPlayerApp() {
       }
     } else {
       if (settings.smartFade && fadeGainRef.current && ctx) {
-        fadeGainRef.current.gain.setValueAtTime(0.0001, ctx.currentTime);
+        try {
+          fadeGainRef.current.gain.cancelScheduledValues(ctx.currentTime);
+          fadeGainRef.current.gain.setValueAtTime(0.0001, ctx.currentTime);
+        } catch {}
         audio.play().then(() => {
           setIsPlaying(true);
-          fadeGainRef.current.gain.setTargetAtTime(1.0, ctx.currentTime, 0.06);
+          try {
+            fadeGainRef.current.gain.setTargetAtTime(1.0, ctx.currentTime, 0.06);
+          } catch {}
         }).catch(() => {});
       } else {
-        if (fadeGainRef.current) fadeGainRef.current.gain.value = 1.0;
+        if (fadeGainRef.current) {
+          try {
+            if (ctx) {
+              fadeGainRef.current.gain.cancelScheduledValues(ctx.currentTime);
+              fadeGainRef.current.gain.setValueAtTime(1.0, ctx.currentTime);
+            } else {
+              fadeGainRef.current.gain.value = 1.0;
+            }
+          } catch {
+            fadeGainRef.current.gain.value = 1.0;
+          }
+        }
         audio.play().then(() => setIsPlaying(true)).catch(() => {});
       }
     }
@@ -874,16 +908,23 @@ export default function MusicPlayerApp() {
     };
 
     const onError = async (e) => {
-      console.warn('Audio playback error on:', audio.src, e);
+      // If audio element has no src attribute or was unloaded, do not retry
+      if (!audio || !audio.hasAttribute('src') || !audio.src || audio.src === window.location.href) {
+        return;
+      }
+
       const track = currentTrackRef.current;
-      if (track && track.id && !track.id.startsWith('local-')) {
+      if (!track || !track.id) return;
+
+      console.warn('Audio playback error on:', audio.src, e);
+      if (!track.id.startsWith('local-')) {
         const currentSrc = audio.src || '';
         if (!currentSrc.includes('&retry=1')) {
           const freshProxyUrl = `/api/stream/proxy?id=${encodeURIComponent(track.id)}&quality=${settings.streamingQuality}&retry=1`;
           audio.src = freshProxyUrl;
           audio.load();
           audio.play().then(() => setIsPlaying(true)).catch((err) => {
-            console.warn('Retry playback error:', err.message);
+            console.warn('Retry playback note:', err.message);
           });
         }
       }

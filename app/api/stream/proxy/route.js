@@ -94,3 +94,6 @@ export async function GET(request) {
     );
   }
 }
+
+export { GET as HEAD };
+

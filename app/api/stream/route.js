@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { resolveStream } from '../../../lib/innertube';
 
+export const maxDuration = 60;
+export const dynamic = 'force-dynamic';
+
 const VIDEO_ID_REGEX = /^[a-zA-Z0-9_-]{11}$/;
 const ALLOWED_QUALITIES = new Set(['lossless', 'high', 'medium', 'low']);
 
@@ -17,6 +20,7 @@ export async function GET(request) {
   try {
     const stream = await resolveStream(id, quality);
     return NextResponse.json({
+      streamUrl: stream.url,
       proxyUrl: `/api/stream/proxy?id=${id}&quality=${quality}`,
       mimeType: stream.mime,
       bitrate: stream.bitrate,

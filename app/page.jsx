@@ -859,14 +859,33 @@ export default function MusicPlayerApp() {
       handleNext();
     };
 
+    const onError = async () => {
+      console.warn('Audio playback error on:', audio.src);
+      const track = currentTrackRef.current;
+      if (track && track.id && !track.id.startsWith('local-')) {
+        try {
+          const res = await fetch(`/api/stream?id=${encodeURIComponent(track.id)}&quality=${settings.streamingQuality}`);
+          const data = await res.json();
+          if (data.streamUrl && audio.src !== data.streamUrl) {
+            audio.src = data.streamUrl;
+            audio.play().then(() => setIsPlaying(true)).catch(() => {});
+          }
+        } catch (e) {
+          console.warn('Audio fallback error:', e);
+        }
+      }
+    };
+
     audio.addEventListener('timeupdate', onTimeUpdate);
     audio.addEventListener('loadedmetadata', onLoadedMetadata);
     audio.addEventListener('ended', onEnded);
+    audio.addEventListener('error', onError);
 
     return () => {
       audio.removeEventListener('timeupdate', onTimeUpdate);
       audio.removeEventListener('loadedmetadata', onLoadedMetadata);
       audio.removeEventListener('ended', onEnded);
+      audio.removeEventListener('error', onError);
     };
   }, [currentTrack, duration, settings.crossfadeSeconds, handleNext]);
 

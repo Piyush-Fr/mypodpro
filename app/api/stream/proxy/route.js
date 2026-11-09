@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { resolveStream } from '../../../../lib/innertube';
 
+export const maxDuration = 60;
+export const dynamic = 'force-dynamic';
+
 const VIDEO_ID_REGEX = /^[a-zA-Z0-9_-]{11}$/;
 const ALLOWED_QUALITIES = new Set(['lossless', 'high', 'medium', 'low']);
 
@@ -66,6 +69,9 @@ export async function GET(request) {
     }
 
     const responseHeaders = new Headers();
+    responseHeaders.set('Access-Control-Allow-Origin', '*');
+    responseHeaders.set('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+    responseHeaders.set('Access-Control-Allow-Headers', 'Range, Content-Type, Accept-Ranges');
     responseHeaders.set('Accept-Ranges', 'bytes');
     responseHeaders.set('Cache-Control', 'public, max-age=7200');
 
@@ -95,5 +101,16 @@ export async function GET(request) {
   }
 }
 
-export { GET as HEAD };
+export async function OPTIONS() {
+  return new Response(null, {
+    status: 204,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+      'Access-Control-Allow-Headers': 'Range, Content-Type, Accept-Ranges',
+      'Access-Control-Max-Age': '86400'
+    }
+  });
+}
 
+export { GET as HEAD };

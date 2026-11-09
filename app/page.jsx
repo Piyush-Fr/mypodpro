@@ -243,6 +243,9 @@ export default function MusicPlayerApp() {
           return;
         }
         if (res.data?.user) {
+          try {
+            localStorage.removeItem('mypod_explicit_logout');
+          } catch {}
           setAuthUser(res.data.user);
           localStorage.setItem('mypod_user_session_v3', JSON.stringify(res.data.user));
           loadUserDataFromDb();
@@ -257,6 +260,9 @@ export default function MusicPlayerApp() {
           setIsSubmittingAuth(false);
           return;
         } else if (res.data?.user) {
+          try {
+            localStorage.removeItem('mypod_explicit_logout');
+          } catch {}
           setAuthUser(res.data.user);
           localStorage.setItem('mypod_user_session_v3', JSON.stringify(res.data.user));
           loadUserDataFromDb();
@@ -285,22 +291,26 @@ export default function MusicPlayerApp() {
 
   const handleSignOut = async () => {
     try {
-      await authClient.signOut();
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.src = '';
+      }
+      setIsPlaying(false);
+      setCurrentTrack(null);
     } catch {}
+
+    try {
+      await authClient.signOut();
+    } catch (e) {
+      console.warn('SignOut error:', e);
+    }
+
     try {
       localStorage.setItem('mypod_explicit_logout', 'true');
+      localStorage.removeItem('mypod_user_session_v3');
     } catch {}
+
     setAuthUser(null);
-    setCurrentTrack(null);
-    setIsPlaying(false);
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.src = '';
-    }
-    if (ytPlayerRef.current?.pauseVideo) {
-      try { ytPlayerRef.current.pauseVideo(); } catch {}
-    }
-    localStorage.removeItem('mypod_user_session_v3');
   };
 
   // --- Audio Settings State ---
@@ -451,9 +461,6 @@ export default function MusicPlayerApp() {
 
   // Audio refs & Web Audio API DSP Nodes
   const audioRef = useRef(null);
-  const ytPlayerRef = useRef(null);
-  const isYtReadyRef = useRef(false);
-  const pendingTrackRef = useRef(null);
   const audioContextRef = useRef(null);
   const eqFiltersRef = useRef([]);
   const headroomGainRef = useRef(null);
@@ -662,62 +669,37 @@ export default function MusicPlayerApp() {
       return [track, ...prev];
     });
 
-    const isOnline = track.isOnline && track.id && !track.src?.startsWith('/audio/');
-
-    if (isOnline) {
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current.src = '';
+    const audio = audioRef.current;
+    if (audio) {
+      let targetSrc = track.src;
+      if (track.isOnline && track.id && !track.src?.startsWith('/audio/')) {
+        targetSrc = `/api/stream/proxy?id=${track.id}&quality=${settings.streamingQuality}`;
       }
 
-      if (ytPlayerRef.current && typeof ytPlayerRef.current.loadVideoById === 'function') {
-        try {
-          ytPlayerRef.current.loadVideoById(track.id);
-          ytPlayerRef.current.playVideo();
-          setIsPlaying(true);
-        } catch (err) {
-          console.warn('YT playVideo error:', err);
-        }
-      } else {
-        pendingTrackRef.current = track;
-        setTimeout(() => {
-          if (ytPlayerRef.current?.loadVideoById) {
-            try {
-              ytPlayerRef.current.loadVideoById(track.id);
-              ytPlayerRef.current.playVideo();
-              setIsPlaying(true);
-            } catch {}
-          }
-        }, 800);
+      if (audio.src !== targetSrc && !audio.src.endsWith(targetSrc)) {
+        audio.src = targetSrc;
       }
-    } else {
-      if (ytPlayerRef.current?.pauseVideo) {
-        try { ytPlayerRef.current.pauseVideo(); } catch {}
+      audio.currentTime = 0;
+      audio.playbackRate = settings.playbackSpeed || 1.0;
+
+      if (fadeGainRef.current) {
+        fadeGainRef.current.gain.value = 1.0;
       }
-      const audio = audioRef.current;
-      if (audio) {
-        let targetSrc = track.src;
-        if (audio.src !== targetSrc && !audio.src.endsWith(targetSrc)) {
-          audio.src = targetSrc;
-        }
-        audio.currentTime = 0;
-        audio.playbackRate = settings.playbackSpeed || 1.0;
 
-        if (fadeGainRef.current) {
-          fadeGainRef.current.gain.value = 1.0;
-        }
-
-        const playPromise = audio.play();
-        if (playPromise !== undefined) {
-          playPromise
-            .then(() => {
-              setIsPlaying(true);
-            })
-            .catch((err) => {
-              console.warn('Playback error / Autoplay note:', err.message);
-              setIsPlaying(false);
-            });
-        }
+      // Autoplay immediately with high fidelity
+      const playPromise = audio.play();
+      if (playPromise !== undefined) {
+        playPromise
+          .then(() => {
+            setIsPlaying(true);
+            if (fadeGainRef.current) {
+              fadeGainRef.current.gain.value = 1.0;
+            }
+          })
+          .catch((err) => {
+            console.warn('Playback error / Autoplay note:', err.message);
+            setIsPlaying(false);
+          });
       }
     }
 
@@ -771,16 +753,9 @@ export default function MusicPlayerApp() {
   }, [manualQueue, automixTracks, settings.autoplay, allTracks, currentTrack, playTrack, fetchAutomix]);
 
   const handlePrev = useCallback(() => {
-    const isOnline = currentTrack?.isOnline && currentTrack?.id && !currentTrack?.src?.startsWith('/audio/');
     const audio = audioRef.current;
-
-    if (currentTime > 3) {
-      setCurrentTime(0);
-      if (isOnline && ytPlayerRef.current?.seekTo) {
-        try { ytPlayerRef.current.seekTo(0, true); } catch {}
-      } else if (audio) {
-        audio.currentTime = 0;
-      }
+    if (audio && audio.currentTime > 3) {
+      audio.currentTime = 0;
       return;
     }
 
@@ -811,7 +786,7 @@ export default function MusicPlayerApp() {
         playTrack(track, { shouldSwitchTab: false, shouldSeedQueue: false });
       }
     }
-  }, [playedHistory, currentTrack, currentTime, manualQueue.length, allTracks, playTrack]);
+  }, [playedHistory, currentTrack, manualQueue.length, allTracks, playTrack]);
 
   // Play / Pause with SmartFade gain transitions
   const togglePlayPause = () => {
@@ -822,22 +797,6 @@ export default function MusicPlayerApp() {
         setActiveTab('search');
       }
       return;
-    }
-
-    const isOnline = currentTrack.isOnline && currentTrack.id && !currentTrack.src?.startsWith('/audio/');
-
-    if (isOnline && ytPlayerRef.current && typeof ytPlayerRef.current.getPlayerState === 'function') {
-      try {
-        const state = ytPlayerRef.current.getPlayerState();
-        if (state === 1) { // Currently playing
-          ytPlayerRef.current.pauseVideo();
-          setIsPlaying(false);
-        } else {
-          ytPlayerRef.current.playVideo();
-          setIsPlaying(true);
-        }
-        return;
-      } catch {}
     }
 
     const audio = audioRef.current;
@@ -914,19 +873,18 @@ export default function MusicPlayerApp() {
       handleNext();
     };
 
-    const onError = async () => {
-      console.warn('Audio playback error on:', audio.src);
+    const onError = async (e) => {
+      console.warn('Audio playback error on:', audio.src, e);
       const track = currentTrackRef.current;
       if (track && track.id && !track.id.startsWith('local-')) {
-        try {
-          const res = await fetch(`/api/stream?id=${encodeURIComponent(track.id)}&quality=${settings.streamingQuality}`);
-          const data = await res.json();
-          if (data.streamUrl && audio.src !== data.streamUrl) {
-            audio.src = data.streamUrl;
-            audio.play().then(() => setIsPlaying(true)).catch(() => {});
-          }
-        } catch (e) {
-          console.warn('Audio fallback error:', e);
+        const currentSrc = audio.src || '';
+        if (!currentSrc.includes('&retry=1')) {
+          const freshProxyUrl = `/api/stream/proxy?id=${encodeURIComponent(track.id)}&quality=${settings.streamingQuality}&retry=1`;
+          audio.src = freshProxyUrl;
+          audio.load();
+          audio.play().then(() => setIsPlaying(true)).catch((err) => {
+            console.warn('Retry playback error:', err.message);
+          });
         }
       }
     };
@@ -942,95 +900,7 @@ export default function MusicPlayerApp() {
       audio.removeEventListener('ended', onEnded);
       audio.removeEventListener('error', onError);
     };
-  }, [currentTrack, duration, settings.crossfadeSeconds, handleNext]);
-
-  // Initialize YouTube background audio engine for 100% universal cloud playback
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    const setupYt = () => {
-      if (window.YT && window.YT.Player && !ytPlayerRef.current) {
-        try {
-          ytPlayerRef.current = new window.YT.Player('mypod-yt-player', {
-            height: '1',
-            width: '1',
-            playerVars: {
-              autoplay: 1,
-              controls: 0,
-              disablekb: 1,
-              fs: 0,
-              playsinline: 1,
-              origin: window.location.origin
-            },
-            events: {
-              onReady: () => {
-                isYtReadyRef.current = true;
-                if (ytPlayerRef.current && volume) {
-                  try { ytPlayerRef.current.setVolume(volume * 100); } catch {}
-                }
-                if (pendingTrackRef.current) {
-                  const pending = pendingTrackRef.current;
-                  pendingTrackRef.current = null;
-                  try {
-                    ytPlayerRef.current.loadVideoById(pending.id);
-                    ytPlayerRef.current.playVideo();
-                    setIsPlaying(true);
-                  } catch {}
-                }
-              },
-              onStateChange: (event) => {
-                // 1 = PLAYING, 2 = PAUSED, 0 = ENDED
-                if (event.data === 1) {
-                  setIsPlaying(true);
-                } else if (event.data === 2) {
-                  setIsPlaying(false);
-                } else if (event.data === 0) {
-                  handleNext();
-                }
-              }
-            }
-          });
-        } catch (e) {
-          console.warn('YT Player init note:', e);
-        }
-      }
-    };
-
-    if (!window.YT) {
-      const existing = document.getElementById('yt-iframe-api-script');
-      if (!existing) {
-        const tag = document.createElement('script');
-        tag.id = 'yt-iframe-api-script';
-        tag.src = 'https://www.youtube.com/iframe_api';
-        document.body.appendChild(tag);
-      }
-      window.onYouTubeIframeAPIReady = setupYt;
-    } else {
-      setupYt();
-    }
-  }, [handleNext, volume]);
-
-  // Synchronize time and duration when streaming via YouTube background engine
-  useEffect(() => {
-    if (!isPlaying) return;
-    const interval = setInterval(() => {
-      const track = currentTrackRef.current;
-      const isOnline = track?.isOnline && track?.id && !track?.src?.startsWith('/audio/');
-      if (isOnline && ytPlayerRef.current && typeof ytPlayerRef.current.getCurrentTime === 'function') {
-        try {
-          const t = ytPlayerRef.current.getCurrentTime();
-          const d = ytPlayerRef.current.getDuration();
-          if (typeof t === 'number' && !isNaN(t) && t > 0) {
-            setCurrentTime(t);
-          }
-          if (typeof d === 'number' && !isNaN(d) && d > 0) {
-            setDuration(d);
-          }
-        } catch {}
-      }
-    }, 250);
-    return () => clearInterval(interval);
-  }, [isPlaying]);
+  }, [currentTrack, duration, settings.crossfadeSeconds, handleNext, settings.streamingQuality]);
 
   // Queue helper methods
   const addToQueue = (track) => {
@@ -1602,6 +1472,7 @@ export default function MusicPlayerApp() {
   if (!isAuthLoaded) {
     return (
       <div className="laptop-stage">
+        <audio ref={audioRef} crossOrigin="anonymous" preload="metadata" />
         <div className="auth-dialog">
           <div style={{ textAlign: 'center', color: '#666666', fontSize: '13px' }}>
             Starting myPod...
@@ -1611,14 +1482,17 @@ export default function MusicPlayerApp() {
     );
   }
 
-  // --- Login Screen ---
-  if (!authUser) {
-    return (
-      <div 
-        className={`laptop-stage ${settings.theme === 'classic' ? 'theme-classic' : 'theme-amoled'}`} 
-        data-theme={settings.theme || 'amoled'}
-        suppressHydrationWarning
-      >
+  // --- Main Application Window ---
+  return (
+    <div 
+      className={`laptop-stage ${settings.theme === 'classic' ? 'theme-classic' : 'theme-amoled'}`} 
+      data-theme={settings.theme || 'amoled'}
+      suppressHydrationWarning
+    >
+      {/* Permanent audio element with crossOrigin for Web Audio API DSP pipeline */}
+      <audio ref={audioRef} crossOrigin="anonymous" preload="metadata" />
+
+      {!authUser ? (
         <div className="auth-dialog">
           <div className="auth-icon-circle">
             <Music2 size={26} color="#38bdf8" />
@@ -1715,34 +1589,8 @@ export default function MusicPlayerApp() {
             Continue as Guest Listener
           </button>
         </div>
-      </div>
-    );
-  }
-
-  // --- Main Application Window ---
-  return (
-    <div 
-      className={`laptop-stage ${settings.theme === 'classic' ? 'theme-classic' : 'theme-amoled'}`} 
-      data-theme={settings.theme || 'amoled'}
-      suppressHydrationWarning
-    >
-      {/* Hidden audio element with crossOrigin for Web Audio API DSP pipeline */}
-      <audio ref={audioRef} crossOrigin="anonymous" preload="metadata" />
-      <div
-        id="mypod-yt-player"
-        style={{
-          position: 'fixed',
-          top: '-20px',
-          left: '-20px',
-          width: '1px',
-          height: '1px',
-          opacity: 0.001,
-          pointerEvents: 'none',
-          zIndex: -1
-        }}
-      />
-
-      <div className="classic-window">
+      ) : (
+        <div className="classic-window">
         {/* 1. Status Bar */}
         <div className="status-bar">
           <div className="status-left">
@@ -3033,14 +2881,10 @@ export default function MusicPlayerApp() {
                       onClick={(e) => {
                         const rect = e.currentTarget.getBoundingClientRect();
                         const clickPos = (e.clientX - rect.left) / rect.width;
-                        if (duration) {
+                        if (audioRef.current && duration) {
                           const targetTime = clickPos * duration;
+                          audioRef.current.currentTime = targetTime;
                           setCurrentTime(targetTime);
-                          if (currentTrack?.isOnline && ytPlayerRef.current?.seekTo) {
-                            try { ytPlayerRef.current.seekTo(targetTime, true); } catch {}
-                          } else if (audioRef.current) {
-                            audioRef.current.currentTime = targetTime;
-                          }
                         }
                       }}
                     >
@@ -3922,15 +3766,13 @@ export default function MusicPlayerApp() {
                 const val = parseFloat(e.target.value);
                 setVolume(val);
                 if (audioRef.current) audioRef.current.volume = val;
-                if (ytPlayerRef.current?.setVolume) {
-                  try { ytPlayerRef.current.setVolume(val * 100); } catch {}
-                }
               }}
               className="transport-vol-slider"
             />
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 }

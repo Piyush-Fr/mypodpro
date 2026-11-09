@@ -32,13 +32,14 @@ export async function GET(request) {
   const id = searchParams.get('id');
   const rawQuality = searchParams.get('quality') || 'lossless';
   const quality = ALLOWED_QUALITIES.has(rawQuality) ? rawQuality : 'lossless';
+  const isRetry = searchParams.get('retry') === '1' || searchParams.get('fresh') === '1';
 
   if (!id || !VIDEO_ID_REGEX.test(id)) {
     return NextResponse.json({ error: 'Valid 11-character video ID is required' }, { status: 400 });
   }
 
   try {
-    let stream = await resolveStream(id, quality);
+    let stream = await resolveStream(id, quality, isRetry);
     if (!stream?.url || !isAllowedAudioUrl(stream.url)) {
       return NextResponse.json({ error: 'Invalid audio stream endpoint' }, { status: 502 });
     }
@@ -56,8 +57,8 @@ export async function GET(request) {
       headers: headersToSend
     });
 
-    // If stream URL expired or forbidden, force fresh stream resolution and retry
-    if (remoteRes.status === 403) {
+    // If stream URL expired or forbidden or failed, force fresh stream resolution and retry
+    if (remoteRes.status === 403 || !remoteRes.ok) {
       try {
         stream = await resolveStream(id, quality, true);
         if (stream?.url && isAllowedAudioUrl(stream.url)) {

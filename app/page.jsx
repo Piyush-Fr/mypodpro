@@ -291,6 +291,7 @@ export default function MusicPlayerApp() {
 
   const handleSignOut = async () => {
     try {
+      stopYt();
       if (audioRef.current) {
         audioRef.current.pause();
         audioRef.current.removeAttribute('src');
@@ -471,6 +472,109 @@ export default function MusicPlayerApp() {
   const fadeGainRef = useRef(null);
   const isAudioInited = useRef(false);
   const isCrossfading = useRef(false);
+
+  // YouTube IFrame fallback for online tracks when the server can't resolve a stream
+  // (YouTube blocks datacenter IPs such as Vercel's). No Web Audio DSP on this path.
+  const ytPlayerRef = useRef(null);
+  const ytReadyRef = useRef(null); // Promise<YT.Player>
+  const ytTrackIdRef = useRef(null);
+  const usingYtRef = useRef(false);
+  const proxyBrokenRef = useRef(false);
+  const handleNextRef = useRef(null);
+  const volumeRef = useRef(0.85);
+
+  const getYtPlayer = useCallback(() => {
+    if (ytReadyRef.current) return ytReadyRef.current;
+    ytReadyRef.current = new Promise((resolve, reject) => {
+      const create = () => {
+        // Host lives outside React's tree: YT swaps it for an iframe, which React must never touch.
+        const wrap = document.createElement('div');
+        wrap.style.cssText = 'position:fixed;left:-9999px;top:0;width:1px;height:1px;opacity:0;pointer-events:none';
+        const host = document.createElement('div');
+        wrap.appendChild(host);
+        document.body.appendChild(wrap);
+        const player = new window.YT.Player(host, {
+          height: '1',
+          width: '1',
+          playerVars: { autoplay: 1, controls: 0, disablekb: 1, fs: 0, playsinline: 1, origin: window.location.origin },
+          events: {
+            onReady: () => {
+              ytPlayerRef.current = player;
+              player.setVolume(Math.round(volumeRef.current * 100));
+              resolve(player);
+            },
+            onStateChange: (e) => {
+              if (!usingYtRef.current) return;
+              if (e.data === 1) setIsPlaying(true); // PLAYING
+              else if (e.data === 2) setIsPlaying(false); // PAUSED
+              else if (e.data === 0) handleNextRef.current?.(); // ENDED
+            },
+            onError: (e) => {
+              console.warn('YouTube fallback error code:', e.data);
+              if (usingYtRef.current) setIsPlaying(false);
+            }
+          }
+        });
+      };
+      if (window.YT?.Player) return create();
+      const prevReady = window.onYouTubeIframeAPIReady;
+      window.onYouTubeIframeAPIReady = () => {
+        prevReady?.();
+        create();
+      };
+      const tag = document.createElement('script');
+      tag.src = 'https://www.youtube.com/iframe_api';
+      tag.onerror = () => {
+        ytReadyRef.current = null;
+        reject(new Error('YouTube IFrame API failed to load'));
+      };
+      document.head.appendChild(tag);
+    });
+    return ytReadyRef.current;
+  }, []);
+
+  const stopYt = useCallback(() => {
+    if (!usingYtRef.current) return;
+    usingYtRef.current = false;
+    ytTrackIdRef.current = null;
+    try { ytPlayerRef.current?.stopVideo(); } catch {}
+  }, []);
+
+  const playViaYt = useCallback((track) => {
+    const audio = audioRef.current;
+    if (audio) {
+      audio.pause();
+      audio.removeAttribute('src');
+      audio.load();
+    }
+    usingYtRef.current = true;
+    ytTrackIdRef.current = track.id;
+    setCurrentTime(0);
+    setDuration(0);
+    getYtPlayer()
+      .then((p) => {
+        if (!usingYtRef.current || ytTrackIdRef.current !== track.id) return;
+        p.loadVideoById(track.id);
+        p.playVideo();
+      })
+      .catch((err) => {
+        console.warn(err.message);
+        setIsPlaying(false);
+      });
+  }, [getYtPlayer]);
+
+  // Keep scrubber time in sync while the YouTube fallback is playing
+  useEffect(() => {
+    if (!isPlaying) return;
+    const id = setInterval(() => {
+      const p = ytPlayerRef.current;
+      if (!usingYtRef.current || !p?.getCurrentTime) return;
+      setCurrentTime(p.getCurrentTime() || 0);
+      const d = p.getDuration();
+      if (d > 0) setDuration(d);
+    }, 500);
+    return () => clearInterval(id);
+  }, [isPlaying]);
 
   // Initialize Web Audio API DSP Graph
   const initAudioEngine = useCallback(() => {
@@ -672,10 +776,16 @@ export default function MusicPlayerApp() {
       return [track, ...prev];
     });
 
+    const isOnlineTrack = track.isOnline && track.id && !track.src?.startsWith('/audio/');
     const audio = audioRef.current;
-    if (audio) {
+    if (isOnlineTrack && proxyBrokenRef.current) {
+      playViaYt(track);
+    } else if (audio) {
+      stopYt();
+      // Preload the fallback player while we still have a user gesture
+      if (isOnlineTrack) getYtPlayer().catch(() => {});
       let targetSrc = track.src;
-      if (track.isOnline && track.id && !track.src?.startsWith('/audio/')) {
+      if (isOnlineTrack) {
         targetSrc = `/api/stream/proxy?id=${track.id}&quality=${settings.streamingQuality}`;
       }
 
@@ -730,7 +840,7 @@ export default function MusicPlayerApp() {
     if (shouldSwitchTab) {
       setActiveTab('now_playing');
     }
-  }, [settings.streamingQuality, settings.playbackSpeed, settings.smartFade, initAudioEngine, fetchAutomix]);
+  }, [settings.streamingQuality, settings.playbackSpeed, settings.smartFade, initAudioEngine, fetchAutomix, getYtPlayer, playViaYt, stopYt]);
 
   // Handle next song in sequence: checks manual queue, then automix radio, then allTracks
   // Keeps queue static and never wipes or resets the upcoming sequence
@@ -770,10 +880,17 @@ export default function MusicPlayerApp() {
     }
   }, [manualQueue, automixTracks, settings.autoplay, allTracks, currentTrack, playTrack, fetchAutomix]);
 
+  useEffect(() => {
+    handleNextRef.current = handleNext;
+  }, [handleNext]);
+
   const handlePrev = useCallback(() => {
     const audio = audioRef.current;
-    if (audio && audio.currentTime > 3) {
-      audio.currentTime = 0;
+    const yt = usingYtRef.current ? ytPlayerRef.current : null;
+    const pos = yt ? (yt.getCurrentTime?.() || 0) : (audio?.currentTime || 0);
+    if (pos > 3) {
+      if (yt) yt.seekTo(0, true);
+      else audio.currentTime = 0;
       return;
     }
 
@@ -814,6 +931,15 @@ export default function MusicPlayerApp() {
       } else {
         setActiveTab('search');
       }
+      return;
+    }
+
+    if (usingYtRef.current) {
+      const yt = ytPlayerRef.current;
+      if (!yt) return;
+      if (isPlaying) yt.pauseVideo();
+      else yt.playVideo();
+      setIsPlaying(!isPlaying);
       return;
     }
 
@@ -917,16 +1043,11 @@ export default function MusicPlayerApp() {
       if (!track || !track.id) return;
 
       console.warn('Audio playback error on:', audio.src, e);
-      if (!track.id.startsWith('local-')) {
-        const currentSrc = audio.src || '';
-        if (!currentSrc.includes('&retry=1')) {
-          const freshProxyUrl = `/api/stream/proxy?id=${encodeURIComponent(track.id)}&quality=${settings.streamingQuality}&retry=1`;
-          audio.src = freshProxyUrl;
-          audio.load();
-          audio.play().then(() => setIsPlaying(true)).catch((err) => {
-            console.warn('Retry playback note:', err.message);
-          });
-        }
+      if (!track.id.startsWith('local-') && (audio.src || '').includes('/api/stream/proxy')) {
+        // The proxy already retries with a fresh stream server-side, so a failure here means the
+        // server can't reach YouTube streams (e.g. Vercel IPs blocked). Play in-browser for the rest of the session.
+        proxyBrokenRef.current = true;
+        playViaYt(track);
       }
     };
 
@@ -941,7 +1062,7 @@ export default function MusicPlayerApp() {
       audio.removeEventListener('ended', onEnded);
       audio.removeEventListener('error', onError);
     };
-  }, [currentTrack, duration, settings.crossfadeSeconds, handleNext, settings.streamingQuality]);
+  }, [currentTrack, duration, settings.crossfadeSeconds, handleNext, playViaYt]);
 
   // Queue helper methods
   const addToQueue = (track) => {
@@ -2922,9 +3043,10 @@ export default function MusicPlayerApp() {
                       onClick={(e) => {
                         const rect = e.currentTarget.getBoundingClientRect();
                         const clickPos = (e.clientX - rect.left) / rect.width;
-                        if (audioRef.current && duration) {
+                        if (duration) {
                           const targetTime = clickPos * duration;
-                          audioRef.current.currentTime = targetTime;
+                          if (usingYtRef.current) ytPlayerRef.current?.seekTo(targetTime, true);
+                          else if (audioRef.current) audioRef.current.currentTime = targetTime;
                           setCurrentTime(targetTime);
                         }
                       }}
@@ -3807,6 +3929,8 @@ export default function MusicPlayerApp() {
                 const val = parseFloat(e.target.value);
                 setVolume(val);
                 if (audioRef.current) audioRef.current.volume = val;
+                volumeRef.current = val;
+                ytPlayerRef.current?.setVolume(Math.round(val * 100));
               }}
               className="transport-vol-slider"
             />

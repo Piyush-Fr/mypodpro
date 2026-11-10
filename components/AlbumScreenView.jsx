@@ -18,7 +18,7 @@ export default function AlbumScreenView({
   toggleLikeAlbum,
   addToQueue,
   allTracks = [],
-  theme = 'amoled'
+  theme = 'modern'
 }) {
   const isPlaylist = album.type === 'playlist' || album.id === 'liked-music-playlist';
   const [albumTracks, setAlbumTracks] = useState(album.tracks || []);

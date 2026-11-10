@@ -4702,3 +4702,447 @@ html, body {
 }
 
 
+
+/* ==================== MODERN THEME ==================== */
+/* True-black flat (taste-skill app style, seed 457950191), layered over the AMOLED base.
+   Elevation by lightness only: #000 ground, #111 surface, #1a1a1a control, #2a2a2a hover.
+   No borders on cards, no shadows, no gradients, no blur. White = selected / primary (inversion).
+   One hue (--m-hue) only on the playing state: progress, the playing row, volume, soundwave. */
+/* --m-hue below is the fallback; page.jsx sets it on the stage from the playing cover's colour */
+.theme-modern {
+  --m-ground: #000000;
+  --m-surface: #111111;
+  --m-control: #1a1a1a;
+  --m-hover: #2a2a2a;
+  --m-rule: #1a1a1a;
+  --m-text: #ffffff;
+  --m-muted: #b4b4b4;
+  --m-faint: #949494;
+  --m-hue: #ff6a2b;
+
+  /* re-point the AMOLED base tokens */
+  --bg-pitch: #000000;
+  --surface-primary: #111111;
+  --surface-secondary: #1a1a1a;
+  --surface-tertiary: #2a2a2a;
+  --border-subtle: #1a1a1a;
+  --border-medium: #1a1a1a;
+  --border-strong: #2a2a2a;
+  --text-secondary: #b4b4b4;
+  --text-muted: #949494;
+  --accent-cyan: #ffffff;
+  --accent-blue: #ffffff;
+  --accent-gradient: #ffffff;
+  --geist-mono: var(--geist-font); /* one face; figures stay tabular */
+}
+
+/* One face, sentence case, no tracked caps */
+.theme-modern,
+.theme-modern * {
+  text-transform: none !important;
+  letter-spacing: 0 !important;
+  font-family: var(--geist-font);
+}
+.theme-modern .tabular-nums { font-variant-numeric: tabular-nums; }
+
+/* ---------- Shell: full-bleed, one ground, 1px rules ---------- */
+.theme-modern.laptop-stage { background: var(--m-ground); padding: 0; }
+
+.theme-modern .classic-window {
+  max-width: none;
+  max-height: none;
+  height: 100vh;
+  min-height: 0;
+  background: var(--m-ground);
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.theme-modern .main-stage { background: var(--m-ground) !important; }
+.theme-modern .coverflow-stage,
+.theme-modern .playlist-container,
+.theme-modern .now-playing-stage,
+.theme-modern .upload-stage,
+.theme-modern .settings-wrapper,
+.theme-modern .artist-profile-container,
+.theme-modern .album-screen-container {
+  background: var(--m-ground);
+}
+
+.theme-modern .status-bar,
+.theme-modern .nav-header,
+.theme-modern .transport-bar {
+  background: var(--m-ground);
+  border-color: var(--m-rule);
+  box-shadow: none;
+}
+
+.theme-modern .artist-nav-bar,
+.theme-modern .album-nav-bar {
+  background: var(--m-ground);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border-color: var(--m-rule);
+}
+
+.theme-modern .status-brand,
+.theme-modern .status-brand span { color: var(--m-text); }
+.theme-modern .status-playing-info,
+.theme-modern .user-badge { color: var(--m-muted); }
+
+/* Nav: active tab is its label going from grey to white; no pill, no fill */
+.theme-modern .nav-tabs {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  gap: 2px;
+}
+.theme-modern .nav-tab-btn {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  color: var(--m-muted);
+  font-weight: 500;
+}
+.theme-modern .nav-tab-btn:hover { background: transparent; color: var(--m-text); }
+.theme-modern .nav-tab-btn.active {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  color: var(--m-text) !important; /* base forces cyan with !important */
+  font-weight: 600;
+}
+
+/* Search */
+.theme-modern .search-input {
+  background: var(--m-surface);
+  border: 1px solid transparent;
+  border-radius: 999px;
+  color: var(--m-text);
+  box-shadow: none;
+}
+.theme-modern .search-input::placeholder { color: var(--m-faint); }
+.theme-modern .search-input:focus {
+  background: var(--m-control);
+  border-color: #444444;
+  box-shadow: none;
+}
+.theme-modern .search-box-icon { color: var(--m-faint); }
+
+/* ---------- Surfaces: one lightness step, no edge ---------- */
+.theme-modern .settings-card,
+.theme-modern .album-card,
+.theme-modern .artist-preview-card,
+.theme-modern .artist-profile-card,
+.theme-modern .artist-bio-card,
+.theme-modern .queue-card-current,
+.theme-modern .queue-empty-box,
+.theme-modern .eq-rack,
+.theme-modern .np-empty-icon-box,
+.theme-modern .auth-dialog,
+.theme-modern .featured-playlist-card,
+.theme-modern .empty-library-box,
+.theme-modern .coverflow-empty-box,
+.theme-modern .coverflow-info-bar,
+.theme-modern .coverflow-bottom-drawer,
+.theme-modern .coverflow-card-back {
+  background: var(--m-surface);
+  border-color: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.theme-modern .settings-card,
+.theme-modern .album-card,
+.theme-modern .artist-preview-card,
+.theme-modern .queue-card-current,
+.theme-modern .queue-empty-box,
+.theme-modern .eq-rack,
+.theme-modern .auth-dialog,
+.theme-modern .featured-playlist-card,
+.theme-modern .coverflow-info-bar {
+  border-radius: 20px;
+}
+
+.theme-modern .album-card:hover,
+.theme-modern .artist-preview-card:hover,
+.theme-modern .featured-playlist-card:hover {
+  background: var(--m-control);
+  border-color: transparent;
+  box-shadow: none;
+  transform: none;
+}
+
+/* The Liked Music art: flat surface, white heart (no gradient) */
+.theme-modern .featured-playlist-art-wrap.gradient-liked,
+.theme-modern .gradient-liked-music {
+  background: var(--m-hover);
+}
+
+.theme-modern .auth-backdrop { background: rgba(0, 0, 0, 0.85); }
+.theme-modern .auth-input {
+  background: var(--m-ground);
+  border-color: #2a2a2a;
+  color: var(--m-text);
+}
+.theme-modern .auth-input:focus { border-color: #444444; box-shadow: none; }
+.theme-modern .auth-icon-circle { background: var(--m-control); border-color: transparent; color: var(--m-text); }
+
+/* ---------- Controls: grey fill, no outline; white = selected or primary ---------- */
+.theme-modern .btn-small-gray,
+.theme-modern .btn-theme-toggle,
+.theme-modern .np-heart-btn,
+.theme-modern .btn-np-view-queue,
+.theme-modern .queue-btn-action,
+.theme-modern .queue-autoplay-toggle,
+.theme-modern .sort-pill,
+.theme-modern .search-cat-tab,
+.theme-modern .eq-preset-chip,
+.theme-modern .btn-artist-toggle-more,
+.theme-modern .auth-btn-guest,
+.theme-modern .library-subnav-btn,
+.theme-modern .btn-cf-action,
+.theme-modern .btn-cf-drawer-action,
+.theme-modern .btn-cf-drawer-close,
+.theme-modern .coverflow-nav-btn,
+.theme-modern .apple-pill-btn-secondary,
+.theme-modern .btn-empty-search,
+.theme-modern .btn-album-back,
+.theme-modern .btn-artist-back,
+.theme-modern .apple-lossless-badge {
+  background: var(--m-control);
+  border-color: transparent;
+  box-shadow: none;
+  color: var(--m-text);
+  border-radius: 999px;
+}
+
+.theme-modern .btn-small-gray:hover,
+.theme-modern .btn-theme-toggle:hover,
+.theme-modern .np-heart-btn:hover,
+.theme-modern .btn-np-view-queue:hover,
+.theme-modern .queue-btn-action:hover,
+.theme-modern .queue-autoplay-toggle:hover,
+.theme-modern .sort-pill:hover,
+.theme-modern .search-cat-tab:hover,
+.theme-modern .eq-preset-chip:hover,
+.theme-modern .btn-artist-toggle-more:hover,
+.theme-modern .auth-btn-guest:hover,
+.theme-modern .library-subnav-btn:hover,
+.theme-modern .btn-cf-action:hover,
+.theme-modern .btn-cf-drawer-action:hover,
+.theme-modern .coverflow-nav-btn:hover,
+.theme-modern .apple-pill-btn-secondary:hover,
+.theme-modern .btn-empty-search:hover,
+.theme-modern .apple-lossless-badge:hover {
+  background: var(--m-hover);
+  border-color: transparent;
+  transform: none;
+}
+
+/* Selected filters and primary actions: inverted white pill */
+.theme-modern .sort-pill.active,
+.theme-modern .search-cat-tab.active,
+.theme-modern .eq-preset-chip.active,
+.theme-modern .library-subnav-btn.active,
+.theme-modern .queue-autoplay-toggle.active,
+.theme-modern .apple-pill-btn-secondary.following,
+.theme-modern .btn-play-album,
+.theme-modern .apple-pill-btn-primary,
+.theme-modern .auth-btn-primary,
+.theme-modern .btn-upload-label,
+.theme-modern .btn-cf-drawer-action.primary {
+  background: #ffffff;
+  border-color: transparent;
+  color: #000000;
+  box-shadow: none;
+}
+.theme-modern .btn-play-album:hover,
+.theme-modern .apple-pill-btn-primary:hover,
+.theme-modern .auth-btn-primary:hover,
+.theme-modern .btn-upload-label:hover,
+.theme-modern .btn-cf-drawer-action.primary:hover { background: #e6e6e6; }
+.theme-modern .btn-play-album svg,
+.theme-modern .apple-pill-btn-primary svg,
+.theme-modern .sort-pill.active svg,
+.theme-modern .search-cat-tab.active svg,
+.theme-modern .library-subnav-btn.active svg { color: #000000; stroke: #000000; }
+
+.theme-modern .search-cat-count { background: var(--m-hover); color: var(--m-text); }
+.theme-modern .search-cat-tab.active .search-cat-count { background: #e6e6e6; color: #000000; }
+
+/* Settings option cards */
+.theme-modern .pill-card {
+  background: var(--m-control);
+  border-color: transparent;
+  box-shadow: none;
+  border-radius: 14px;
+}
+.theme-modern .pill-card:hover { background: var(--m-hover); }
+.theme-modern .pill-card.active {
+  background: #ffffff;
+  border-color: transparent;
+  box-shadow: none;
+}
+.theme-modern .pill-card.active,
+.theme-modern .pill-card.active * { color: #000000; }
+.theme-modern .pill-card-badge {
+  background: transparent;
+  border: 0;
+  color: var(--m-faint);
+  padding: 0;
+  font-weight: 500;
+}
+.theme-modern .pill-card.active .pill-card-badge { color: #555555; }
+
+/* Toggles and sliders: white for on, the hue never on chrome */
+.theme-modern .toggle-btn { background: #2a2a2a; }
+.theme-modern .toggle-btn.on { background: #ffffff; }
+.theme-modern .toggle-btn.on .toggle-handle { background: #000000; box-shadow: none; }
+.theme-modern .toggle-handle { box-shadow: none; }
+.theme-modern .range-slider-input,
+.theme-modern .eq-band-slider { accent-color: #ffffff; }
+.theme-modern .slider-val-badge { background: var(--m-control); border-color: transparent; color: var(--m-text); }
+
+/* ---------- Tables: rules and alignment ---------- */
+.theme-modern .track-table th {
+  background: var(--m-ground);
+  color: var(--m-faint);
+  font-size: 12px;
+  font-weight: 400;
+  border-color: var(--m-rule);
+}
+.theme-modern .track-row td { border-color: var(--m-rule); }
+.theme-modern .track-row:hover td { background: var(--m-surface); }
+.theme-modern .track-row.active td { background: transparent !important; color: var(--m-muted) !important; }
+.theme-modern .clickable-title:hover { color: var(--m-text) !important; }
+.theme-modern .track-row:hover .cell-title { color: var(--m-text); }
+.theme-modern .track-row.active td.cell-title,
+.theme-modern .track-row.active .track-title { color: var(--m-hue) !important; }
+.theme-modern .track-action-btn { color: var(--m-muted); }
+.theme-modern .track-action-btn:hover { color: var(--m-text); background: var(--m-control); }
+
+/* ---------- Text roles: links and labels go neutral ---------- */
+.theme-modern .coverflow-artist-link,
+.theme-modern .coverflow-back-artist,
+.theme-modern .album-artist-link,
+.theme-modern .btn-open-playlist,
+.theme-modern .btn-theme-toggle,
+.theme-modern .btn-artist-toggle-more,
+.theme-modern .clickable-title:hover,
+.theme-modern .np-song-artist { color: var(--m-text); }
+
+.theme-modern .featured-playlist-tag,
+.theme-modern .album-eyebrow-tag,
+.theme-modern .np-track-num,
+.theme-modern .eq-band-gain,
+.theme-modern .artist-tag-badge,
+.theme-modern .artist-verified-pill,
+.theme-modern .np-song-album { color: var(--m-faint); }
+.theme-modern .artist-tag-badge,
+.theme-modern .artist-verified-pill { background: var(--m-control); border-color: transparent; }
+
+.theme-modern .coverflow-back-row.active,
+.theme-modern .cf-drawer-track-row.active { background: var(--m-control); color: var(--m-hue); }
+.theme-modern .cf-row-play-icon { color: var(--m-hue); }
+
+/* Icons: grey outline; the old cyan becomes neutral */
+.theme-modern svg[stroke="#38bdf8"] { stroke: var(--m-muted); }
+
+/* ---------- The one hue: what is playing ---------- */
+.theme-modern .scrub-track { background: var(--m-hover); border: 0; }
+.theme-modern .scrub-fill { background: var(--m-hue); box-shadow: none; }
+.theme-modern .transport-vol-slider { accent-color: var(--m-hue); }
+.theme-modern .queue-now-badge { color: var(--m-hue); }
+.theme-modern .soundwave-bar,
+.theme-modern .apple-sound-wave .bar { background: var(--m-hue); }
+.theme-modern .coverflow-slider::-webkit-slider-thumb { background: #ffffff; box-shadow: none; }
+
+/* Transport: the play button is the primary control (white, no glow) */
+.theme-modern .transport-btn-round { box-shadow: none; }
+.theme-modern .transport-btn-plain { color: var(--m-muted); }
+.theme-modern .transport-btn-plain:hover { color: var(--m-text); }
+.theme-modern .transport-title { color: var(--m-text); }
+.theme-modern .transport-artist { color: var(--m-muted); }
+.theme-modern .transport-thumb { border-radius: 4px; box-shadow: none; }
+.theme-modern .transport-thumb-empty { background: var(--m-control); border-color: transparent; }
+
+/* ---------- Now Playing: Cover Flow over a quiet column ---------- */
+.theme-modern .now-playing-stage {
+  flex-direction: column;
+  justify-content: safe center;
+  align-items: center;
+  gap: 0;
+  padding: 24px 40px;
+}
+
+/* Grows/shrinks with the free space so the details below always fit */
+.np-flow {
+  position: relative;
+  flex: 1 1 0;
+  min-height: 120px;
+  max-height: 340px;
+  width: 100%;
+  max-width: 1000px;
+  margin-bottom: clamp(24px, 4vh, 40px);
+  perspective: 1200px;
+  transform-style: preserve-3d;
+}
+
+.np-flow-card {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  height: 100%;
+  aspect-ratio: 1;
+  padding: 0;
+  border: 0;
+  background: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: transform 0.7s cubic-bezier(0.22, 1, 0.36, 1), filter 0.7s ease;
+}
+.np-flow-card.current { cursor: default; }
+.np-flow-card img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  border-radius: 6px;
+}
+.np-flow-card:focus-visible { outline: none; }
+.np-flow-card:focus-visible img { outline: 2px solid #ffffff; outline-offset: 3px; }
+
+.theme-modern .now-playing-details-box {
+  flex: none;
+  width: 100%;
+  max-width: 560px;
+  gap: 12px;
+  text-align: center;
+}
+.theme-modern .np-song-title { font-size: 24px; font-weight: 600; color: var(--m-text); }
+.theme-modern .np-song-artist { font-size: 16px; font-weight: 500; }
+.theme-modern .np-song-album { font-size: 14px; font-weight: 400; }
+.theme-modern .np-star-rating-row,
+.theme-modern .np-audio-badge-row { justify-content: center; }
+.theme-modern .np-star-glyph { color: #2a2a2a; }
+.theme-modern .np-star-glyph.active { color: var(--m-muted); }
+.theme-modern .np-star-track-counter { color: var(--m-faint); }
+.theme-modern .scrub-times { color: var(--m-faint); }
+
+/* Minimal: drop the eyebrow counter (the star row already says "1 of 5"), the lossless row
+   (the transport bar shows it) and the queue row (Queue is a tab); the like button sits
+   centred under the scrubber. */
+.theme-modern .now-playing-details-box > div:first-child {
+  order: 3;
+  justify-content: center !important;
+}
+.theme-modern .now-playing-details-box > div:first-child .np-track-num,
+.theme-modern .np-audio-badge-row,
+.theme-modern .np-audio-footer-row { display: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .np-flow-card { transition: none; }
+}

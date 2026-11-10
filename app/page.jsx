@@ -97,9 +97,42 @@ const EQ_PRESETS = {
   'Vocal / Acoustic': [-2.0, -1.5, 0, 2.0, 3.5, 3.5, 2.0, 0.5, -0.5, -1.5]
 };
 
+// Modern theme accent: the most vivid hue in a cover, at a fixed lightness that reads on black.
+// Returns null for greyscale covers (the CSS default hue is used). Throws on a tainted canvas.
+function pickCoverAccent(img) {
+  const size = 24;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(img, 0, 0, size, size);
+  const px = ctx.getImageData(0, 0, size, size).data;
+  const buckets = Array.from({ length: 12 }, () => ({ w: 0, h: 0, s: 0 })); // 30-degree hue bins
+  for (let i = 0; i < px.length; i += 4) {
+    const r = px[i] / 255, g = px[i + 1] / 255, b = px[i + 2] / 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+    const sat = max === 0 ? 0 : d / max;
+    if (sat < 0.25 || max < 0.2) continue; // skip greys and near-blacks
+    let hue = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+    hue = (hue * 60 + 360) % 360;
+    const w = sat * sat * max; // favour vivid, bright pixels
+    const bin = buckets[Math.floor(hue / 30)];
+    bin.w += w; bin.h += hue * w; bin.s += sat * w;
+  }
+  const best = buckets.reduce((a, b) => (b.w > a.w ? b : a));
+  if (best.w < 3) return null;
+  const hue = Math.round(best.h / best.w);
+  const sat = Math.round(Math.min(90, Math.max(55, (best.s / best.w) * 100)));
+  return `hsl(${hue} ${sat}% 62%)`;
+}
+
+// Two themes; the retired AMOLED theme (and anything unknown but set) maps to Modern
+const THEME_LABELS = { classic: 'Classic', modern: 'Modern' };
+const normalizeTheme = (id) => (id === 'classic' ? 'classic' : id ? 'modern' : 'classic');
+const nextThemeId = (id) => (normalizeTheme(id) === 'classic' ? 'modern' : 'classic');
+
 // Default High-Fidelity Audio Settings
 const DEFAULT_AUDIO_SETTINGS = {
-  theme: 'classic', // 'classic' | 'amoled'
+  theme: 'classic', // 'classic' | 'modern'
   streamingQuality: 'lossless', // 'lossless' | 'high' | 'medium' | 'low'
   crossfadeSeconds: 0, // 0 to 12s
   smartFade: true, // Smooth gain ramp on pause/play
@@ -141,7 +174,7 @@ export default function MusicPlayerApp() {
         setAllTracks(libRes.tracks);
       }
       if (setRes && setRes.settings) {
-        setSettings(s => ({ ...s, ...setRes.settings }));
+        setSettings(s => ({ ...s, ...setRes.settings, theme: normalizeTheme(setRes.settings.theme || s.theme) }));
       }
     } catch (e) {
       console.warn('Neon DB sync notice:', e);
@@ -168,10 +201,10 @@ export default function MusicPlayerApp() {
         setSettings((s) => ({
           ...s,
           ...parsed,
-          theme: explicitTheme || 'classic'
+          theme: normalizeTheme(explicitTheme || parsed.theme)
         }));
       } else {
-        setSettings((s) => ({ ...s, theme: explicitTheme || 'classic' }));
+        setSettings((s) => ({ ...s, theme: normalizeTheme(explicitTheme) }));
       }
     } catch {}
 
@@ -884,11 +917,12 @@ export default function MusicPlayerApp() {
     handleNextRef.current = handleNext;
   }, [handleNext]);
 
-  const handlePrev = useCallback(() => {
+  // allowRestart=false skips the "restart if >3s in" rule (used when clicking a previous cover)
+  const handlePrev = useCallback((allowRestart = true) => {
     const audio = audioRef.current;
     const yt = usingYtRef.current ? ytPlayerRef.current : null;
     const pos = yt ? (yt.getCurrentTime?.() || 0) : (audio?.currentTime || 0);
-    if (pos > 3) {
+    if (allowRestart !== false && pos > 3) {
       if (yt) yt.seekTo(0, true);
       else audio.currentTime = 0;
       return;
@@ -1089,9 +1123,11 @@ export default function MusicPlayerApp() {
   };
 
   // --- Cover Flow Data & Fluid Momentum (Lenis + GSAP) ---
-  // All music in both Library and Liked sections automatically grouped into distinct albums in Cover Flow
+  // Cover Flow shows liked songs only (the heart is "Add to Cover Flow"), grouped into albums.
+  // Songs that were merely played land in the library but never in Cover Flow.
   const coverFlowAlbums = useMemo(() => {
-    if (!allTracks || allTracks.length === 0) return [];
+    const likedTracks = (allTracks || []).filter((t) => t.isLiked);
+    if (likedTracks.length === 0) return [];
     const map = new Map();
 
     const cleanAlbumTitle = (alb) => {
@@ -1108,7 +1144,7 @@ export default function MusicPlayerApp() {
       return primary || art.trim();
     };
 
-    allTracks.forEach((track) => {
+    likedTracks.forEach((track) => {
       const rawAlbum = track.album || '';
       const rawArtist = track.artist || 'Unknown Artist';
       const rawTitle = track.title || 'Unknown Track';
@@ -1192,14 +1228,20 @@ export default function MusicPlayerApp() {
         zIndex = Math.max(1, 90 - Math.round(Math.abs(offset) * 10));
       }
 
-      const opacity = coverFlowAlbums.length <= 5 ? 1 : (Math.abs(offset) > 6 ? 0 : 1);
+      // Cards far off-centre are hidden (visibility, not just opacity) so the browser drops their
+      // 3D layers; dozens of composited cover layers can exhaust GPU memory and blank every image.
+      const far = Math.abs(offset) > 6;
+      if (far) {
+        gsap.set(el, { autoAlpha: 0 });
+        return;
+      }
 
       gsap.set(el, {
         x: xPos,
         z: zPos,
         rotationY: rotY,
         scale: scale,
-        opacity: opacity,
+        autoAlpha: 1,
         zIndex: zIndex,
         filter: `brightness(${brightness})`,
         transformPerspective: 1200,
@@ -1224,16 +1266,20 @@ export default function MusicPlayerApp() {
     if (activeTab !== 'cover_flow' || !coverFlowAlbums.length) return;
 
     let animId;
+    let settled = false;
     const ticker = () => {
       const diff = targetProgress.current - currentProgress.current;
       if (Math.abs(diff) > 0.0003) {
+        settled = false;
         currentProgress.current += diff * 0.065;
         renderCards(currentProgress.current);
         const rounded = Math.round(currentProgress.current);
         if (rounded !== coverFlowIndex) {
           setCoverFlowIndex(rounded);
         }
-      } else {
+      } else if (!settled) {
+        // Snap once, then stop re-rendering every card on every frame while idle
+        settled = true;
         currentProgress.current = targetProgress.current;
         renderCards(currentProgress.current);
       }
@@ -1342,16 +1388,20 @@ export default function MusicPlayerApp() {
 
   const toggleLikeAlbum = useCallback((album) => {
     if (!album || !album.tracks || album.tracks.length === 0) return;
-    const shouldLike = !album.isLiked;
+    // Like the whole album unless every track is already liked (then unlike it).
+    // Tracks not yet in the library are added, so a freshly opened album lands in Cover Flow.
+    const likedIds = new Set(allTracks.filter((t) => t.isLiked).map((t) => t.id));
+    const shouldLike = !album.tracks.every((t) => likedIds.has(t.id));
     const trackIds = new Set(album.tracks.map((t) => t.id));
 
     setAllTracks((prev) => {
-      return prev.map((t) => {
-        if (trackIds.has(t.id)) {
-          return { ...t, isLiked: shouldLike };
-        }
-        return t;
-      });
+      const existing = new Set(prev.map((t) => t.id));
+      const updated = prev.map((t) => (trackIds.has(t.id) ? { ...t, isLiked: shouldLike } : t));
+      if (!shouldLike) return updated;
+      const added = album.tracks
+        .filter((t) => !existing.has(t.id))
+        .map((t) => ({ ...t, isLiked: true }));
+      return [...added, ...updated];
     });
 
     if (authUser && authUser.id !== 'guest_local_listener') {
@@ -1366,7 +1416,7 @@ export default function MusicPlayerApp() {
         }).catch(() => {});
       });
     }
-  }, [authUser]);
+  }, [authUser, allTracks]);
 
   const addToLibrary = useCallback((track) => {
     if (!track) return;
@@ -1623,6 +1673,38 @@ export default function MusicPlayerApp() {
     return Array.from(map.values());
   }, [allTracks]);
 
+  // Modern theme accent follows the playing song's cover art
+  const [coverAccent, setCoverAccent] = useState(null);
+  useEffect(() => {
+    const src = currentTrack?.cover;
+    if (!src) { setCoverAccent(null); return; }
+    let cancelled = false;
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.referrerPolicy = 'no-referrer';
+    img.onload = () => {
+      if (cancelled) return;
+      try { setCoverAccent(pickCoverAccent(img)); } catch { setCoverAccent(null); }
+    };
+    img.onerror = () => { if (!cancelled) setCoverAccent(null); };
+    img.src = src;
+    return () => { cancelled = true; };
+  }, [currentTrack?.cover]);
+
+  // Modern theme Now Playing Cover Flow: last 3 played, current, next 3 up
+  const nowPlayingFlow = useMemo(() => {
+    if (!currentTrack) return [];
+    const seen = new Set([currentTrack.id]);
+    const pick = (list) => list.filter((t) => t && !seen.has(t.id) && seen.add(t.id));
+    const prev = pick([...playedHistory].reverse()).slice(0, 3).reverse();
+    const next = pick([...manualQueue, ...automixTracks]).slice(0, 3);
+    return [
+      ...prev.map((t, i) => ({ track: t, offset: i - prev.length })),
+      { track: currentTrack, offset: 0 },
+      ...next.map((t, i) => ({ track: t, offset: i + 1 }))
+    ];
+  }, [currentTrack, playedHistory, manualQueue, automixTracks]);
+
   const formatTime = (secs) => {
     if (!secs || isNaN(secs) || secs < 0) return '0:00';
     const m = Math.floor(secs / 60);
@@ -1647,8 +1729,9 @@ export default function MusicPlayerApp() {
   // --- Main Application Window ---
   return (
     <div 
-      className={`laptop-stage ${settings.theme === 'classic' ? 'theme-classic' : 'theme-amoled'}`} 
-      data-theme={settings.theme || 'amoled'}
+      className={`laptop-stage theme-${normalizeTheme(settings.theme)}`}
+      data-theme={normalizeTheme(settings.theme)}
+      style={coverAccent ? { '--m-hue': coverAccent } : undefined}
       suppressHydrationWarning
     >
       {/* Permanent audio element with crossOrigin for Web Audio API DSP pipeline */}
@@ -1769,26 +1852,18 @@ export default function MusicPlayerApp() {
             <button
               onClick={() => {
                 setSettings((s) => {
-                  const nextTheme = s.theme === 'classic' ? 'amoled' : 'classic';
+                  const nextTheme = nextThemeId(s.theme);
                   try { localStorage.setItem('mypod_theme_choice_v2', nextTheme); } catch {}
                   return { ...s, theme: nextTheme };
                 });
               }}
               className="btn-theme-toggle"
-              title={settings.theme === 'classic' ? 'Switch to AMOLED Pitch Black' : 'Switch to Classic iPod Theme'}
+              title={`Switch to ${THEME_LABELS[nextThemeId(settings.theme)]} theme`}
               suppressHydrationWarning
             >
-              {settings.theme === 'classic' ? (
-                <>
-                  <Moon size={11} />
-                  <span>AMOLED</span>
-                </>
-              ) : (
-                <>
-                  <Sun size={11} color="#38bdf8" />
-                  <span>Classic</span>
-                </>
-              )}
+              {nextThemeId(settings.theme) === 'modern' && <Moon size={11} />}
+              {nextThemeId(settings.theme) === 'classic' && <Sun size={11} />}
+              <span>{THEME_LABELS[nextThemeId(settings.theme)]}</span>
             </button>
             <div className="user-badge" suppressHydrationWarning>
               <User size={12} />
@@ -1988,7 +2063,7 @@ export default function MusicPlayerApp() {
                                 <div className="coverflow-back-artist">{album.artist}</div>
                               </div>
                               <div className="coverflow-back-tracklist">
-                                {album.tracks.map((t, tIdx) => (
+                                {isFlipped && album.tracks.map((t, tIdx) => (
                                   <div
                                     key={t.id || tIdx}
                                     className={`coverflow-back-row ${currentTrack && currentTrack.id === t.id ? 'active' : ''}`}
@@ -2921,7 +2996,49 @@ export default function MusicPlayerApp() {
               </div>
             ) : (
               <div className="now-playing-stage">
-                {/* 3D Angled Cover Art with Mirror Reflection & Glass Sheen */}
+                {settings.theme === 'modern' ? (
+                  /* Cover Flow of recent / current / up-next; covers slide between slots on track change */
+                  <div className="np-flow" role="group" aria-label="Now playing cover flow">
+                    {nowPlayingFlow.map(({ track, offset }) => {
+                      const dist = Math.abs(offset);
+                      const side = Math.sign(offset);
+                      return (
+                        <button
+                          key={track.id}
+                          type="button"
+                          className={`np-flow-card ${offset === 0 ? 'current' : ''}`}
+                          style={{
+                            transform: offset === 0
+                              ? 'translateX(-50%) translateZ(60px)'
+                              : `translateX(calc(-50% + ${side * (72 + (dist - 1) * 28)}%)) translateZ(${-140 - (dist - 1) * 60}px) rotateY(${side * -58}deg)`,
+                            zIndex: 10 - dist,
+                            filter: `brightness(${1 - dist * 0.18})`
+                          }}
+                          onClick={() => {
+                            if (offset < 0) handlePrev(false);
+                            else if (offset > 0) handleNext();
+                          }}
+                          tabIndex={offset === 0 ? -1 : 0}
+                          aria-label={offset === 0 ? `Now playing: ${track.title}` : `${offset < 0 ? 'Previous' : 'Next'}: ${track.title}`}
+                          title={offset === 0 ? undefined : `${offset < 0 ? 'Previous' : 'Next'}: ${track.title}`}
+                        >
+                          <img
+                            src={track.cover || '/art/default_album.webp'}
+                            alt=""
+                            draggable={false}
+                            decoding="async"
+                            referrerPolicy="no-referrer"
+                            onError={(e) => {
+                              e.currentTarget.onerror = null;
+                              e.currentTarget.src = '/art/default_album.webp';
+                            }}
+                          />
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                /* 3D Angled Cover Art with Mirror Reflection & Glass Sheen */
                 <div className="now-playing-cover-stage">
                   <div className="now-playing-cover-3d">
                     <div className="now-playing-art-wrap">
@@ -2959,6 +3076,7 @@ export default function MusicPlayerApp() {
                     </div>
                   </div>
                 </div>
+                )}
 
                 {/* Track Details & Scrubber */}
                 <div className="now-playing-details-box">
@@ -3525,7 +3643,7 @@ export default function MusicPlayerApp() {
                         Theme & Visual Appearance
                       </h3>
                       <p className="settings-card-desc">
-                        Switch between the nostalgic Classic iPod silver finish and the modern AMOLED Pitch Black interface.
+                        Switch between the nostalgic Classic iPod silver finish and the minimal Modern look with a Cover Flow Now Playing.
                       </p>
                     </div>
                   </div>
@@ -3537,10 +3655,10 @@ export default function MusicPlayerApp() {
                         title: 'Classic iPod', 
                         badge: 'Iconic 2007' 
                       },
-                      { 
-                        id: 'amoled', 
-                        title: 'AMOLED Pitch Black', 
-                        badge: 'AMOLED Dark' 
+                      {
+                        id: 'modern',
+                        title: 'Modern',
+                        badge: 'Minimal'
                       }
                     ].map((th) => (
                       <div
@@ -3549,7 +3667,7 @@ export default function MusicPlayerApp() {
                           try { localStorage.setItem('mypod_theme_choice_v2', th.id); } catch {}
                           setSettings((s) => ({ ...s, theme: th.id }));
                         }}
-                        className={`pill-card ${(settings.theme || 'classic') === th.id ? 'active' : ''}`}
+                        className={`pill-card ${normalizeTheme(settings.theme) === th.id ? 'active' : ''}`}
                       >
                         <div className="pill-card-title">
                           <span>{th.title}</span>

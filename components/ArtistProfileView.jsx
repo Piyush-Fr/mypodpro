@@ -17,7 +17,7 @@ export default function ArtistProfileView({
   toggleLikeTrack,
   addToQueue,
   allTracks = [],
-  theme = 'amoled'
+  theme = 'modern'
 }) {
   const [isFollowing, setIsFollowing] = useState(false);
   const [artistTracks, setArtistTracks] = useState(artist.topTracks || []);

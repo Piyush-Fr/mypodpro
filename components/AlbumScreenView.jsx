@@ -5,6 +5,7 @@ import {
   Play, Pause, Shuffle, Heart, Plus, ChevronLeft, 
   Disc, Music2, Share2, Sparkles, FolderHeart, Clock
 } from 'lucide-react';
+import Spinner from '@/components/Spinner';
 
 export default function AlbumScreenView({
   album,
@@ -23,7 +24,8 @@ export default function AlbumScreenView({
   const isPlaylist = album.type === 'playlist' || album.id === 'liked-music-playlist';
   const [albumTracks, setAlbumTracks] = useState(album.tracks || []);
   const [albumMeta, setAlbumMeta] = useState(album);
-  const [isLoadingTracks, setIsLoadingTracks] = useState(false);
+  // Start in the loading state when a fetch will run, so the spinner shows instead of "No tracks"
+  const [isLoadingTracks, setIsLoadingTracks] = useState(!isPlaylist && !(album.tracks && album.tracks.length > 2));
 
   // Automatically fetch full album tracklist if online album has fewer than 2 tracks
   useEffect(() => {
@@ -263,7 +265,7 @@ export default function AlbumScreenView({
       <div className="album-tracklist-section">
         {isLoadingTracks && albumTracks.length === 0 ? (
           <div className="album-loading-box">
-            <Music2 size={24} className="spin-slow" />
+            <Spinner size={22} label="Loading" />
             <span>Loading full album tracks in lossless clarity...</span>
           </div>
         ) : albumTracks.length === 0 ? (

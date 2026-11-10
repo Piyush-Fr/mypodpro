@@ -5,6 +5,7 @@ import {
   Play, Pause, Shuffle, Heart, Plus, ChevronLeft, Check, Star, 
   Disc, Music2, Radio, ExternalLink, Sparkles, Volume2, ChevronDown, ChevronUp
 } from 'lucide-react';
+import Spinner from '@/components/Spinner';
 
 export default function ArtistProfileView({
   artist,
@@ -24,7 +25,7 @@ export default function ArtistProfileView({
   const [artistAlbums, setArtistAlbums] = useState(artist.albums || []);
   const [artistBio, setArtistBio] = useState(artist.bio || '');
   const [artistAvatar, setArtistAvatar] = useState(artist.avatar || null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(Boolean(artist.name)); // a fetch runs on mount
   const [showAllTracks, setShowAllTracks] = useState(false);
 
   // Fetch full artist catalog, top songs (20+), albums, and bio from dedicated artist API
@@ -221,7 +222,7 @@ export default function ArtistProfileView({
 
         {isLoading && artistTracks.length === 0 ? (
           <div className="artist-loading-box">
-            <Music2 size={24} className="spin-slow" />
+            <Spinner size={22} label="Loading" />
             <span>Loading complete artist discography...</span>
           </div>
         ) : topSongsToDisplay.length === 0 ? (

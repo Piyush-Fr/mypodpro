@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { 
-  Play, Pause, SkipBack, SkipForward, Volume2, Search, Upload, 
+  Play, Pause, SkipBack, SkipForward, Volume2, Search, 
   Disc, Heart, LogOut, User, Music2, FolderHeart, 
   ChevronLeft, ChevronRight, Sliders, Settings, Radio, Sparkles, Activity, Gauge,
   ListMusic, Plus, Trash2, ArrowUp, ArrowDown, History, Sun, Moon, Palette, Zap,
@@ -13,6 +13,8 @@ import Lenis from 'lenis';
 import { authClient } from '@/lib/auth-client';
 import ArtistProfileView from '@/components/ArtistProfileView';
 import AlbumScreenView from '@/components/AlbumScreenView';
+import Spinner from '@/components/Spinner';
+import SearchSuggestions, { rememberSearch } from '@/components/SearchSuggestions';
 
 const DEFAULT_TRACKS = [
   {
@@ -380,7 +382,7 @@ export default function MusicPlayerApp() {
     } catch {}
   }, [allTracks]);
 
-  // Active view: 'cover_flow' | 'search' | 'library' | 'playlists' | 'now_playing' | 'queue' | 'settings' | 'upload' | 'artist' | 'album'
+  // Active view: 'cover_flow' | 'search' | 'library' | 'playlists' | 'now_playing' | 'queue' | 'settings' | 'artist' | 'album'
   const [activeTab, setActiveTab] = useState('cover_flow');
   const [selectedArtist, setSelectedArtist] = useState(null);
   const [selectedAlbum, setSelectedAlbum] = useState(null);
@@ -405,6 +407,7 @@ export default function MusicPlayerApp() {
     } catch {}
   }, [currentTrack]);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isBuffering, setIsBuffering] = useState(false); // a song is loading: shows the spinner
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(0.85);
@@ -433,6 +436,9 @@ export default function MusicPlayerApp() {
   const [searchArtists, setSearchArtists] = useState([]);
   const [searchSortBy, setSearchSortBy] = useState('default'); // 'default' | 'title' | 'artist' | 'duration_desc' | 'duration_asc' | 'album'
   const [isSearching, setIsSearching] = useState(false);
+  const [suggestOpen, setSuggestOpen] = useState(false);
+  const suggestKeyRef = useRef(null);
+  const lastSearchedRef = useRef('');
   const [searchFeedback, setSearchFeedback] = useState('');
   const [searchCategory, setSearchCategory] = useState('songs'); // 'songs' | 'albums' | 'artists'
 
@@ -538,13 +544,14 @@ export default function MusicPlayerApp() {
             },
             onStateChange: (e) => {
               if (!usingYtRef.current) return;
+              setIsBuffering(e.data === 3 || e.data === -1); // BUFFERING / UNSTARTED
               if (e.data === 1) setIsPlaying(true); // PLAYING
               else if (e.data === 2) setIsPlaying(false); // PAUSED
               else if (e.data === 0) handleNextRef.current?.(); // ENDED
             },
             onError: (e) => {
               console.warn('YouTube fallback error code:', e.data);
-              if (usingYtRef.current) setIsPlaying(false);
+              if (usingYtRef.current) { setIsPlaying(false); setIsBuffering(false); }
             }
           }
         });
@@ -582,6 +589,7 @@ export default function MusicPlayerApp() {
     }
     usingYtRef.current = true;
     ytTrackIdRef.current = track.id;
+    setIsBuffering(true);
     setCurrentTime(0);
     setDuration(0);
     getYtPlayer()
@@ -595,6 +603,23 @@ export default function MusicPlayerApp() {
         setIsPlaying(false);
       });
   }, [getYtPlayer]);
+
+  // Loading state of the <audio> element (the YouTube fallback reports its own in onStateChange)
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    const set = (v) => () => { if (!usingYtRef.current) setIsBuffering(v); };
+    const on = set(true);
+    const off = set(false);
+    const onEvents = ['loadstart', 'waiting', 'seeking'];
+    const offEvents = ['playing', 'canplay', 'pause', 'seeked', 'emptied', 'error'];
+    onEvents.forEach((ev) => audio.addEventListener(ev, on));
+    offEvents.forEach((ev) => audio.addEventListener(ev, off));
+    return () => {
+      onEvents.forEach((ev) => audio.removeEventListener(ev, on));
+      offEvents.forEach((ev) => audio.removeEventListener(ev, off));
+    };
+  }, []);
 
   // Keep scrubber time in sync while the YouTube fallback is playing
   useEffect(() => {
@@ -1491,16 +1516,22 @@ export default function MusicPlayerApp() {
   };
 
   // Search online submit handler
-  const handleSearchSubmit = async (e) => {
+  // overrideQuery: run a search for text picked from the suggestions menu
+  const handleSearchSubmit = async (e, overrideQuery) => {
     if (e) e.preventDefault();
-    if (!searchQuery.trim()) return;
+    const q = (overrideQuery ?? searchQuery).trim();
+    if (!q) return;
+    if (overrideQuery !== undefined) setSearchQuery(q);
+    setSuggestOpen(false);
+    rememberSearch(q);
+    lastSearchedRef.current = q;
     setIsSearching(true);
     setSearchFeedback('');
     setActiveTab('search');
     setSearchSortBy('default');
 
     try {
-      const res = await fetch(`/api/search?q=${encodeURIComponent(searchQuery.trim())}`);
+      const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
       const data = await res.json();
       if (data.tracks && data.tracks.length > 0) {
         setSearchResults(data.tracks);
@@ -1515,31 +1546,6 @@ export default function MusicPlayerApp() {
     } finally {
       setIsSearching(false);
     }
-  };
-
-  // File upload handler
-  const handleFileUpload = (e) => {
-    const files = Array.from(e.target.files || []);
-    if (!files.length) return;
-
-    const uploaded = files.map((f, i) => {
-      const url = URL.createObjectURL(f);
-      const nameParts = f.name.replace(/\.[^/.]+$/, '').split(' - ');
-      return {
-        id: `local-${Date.now()}-${i}`,
-        title: nameParts.length > 1 ? nameParts[1].trim() : nameParts[0].trim(),
-        artist: nameParts.length > 1 ? nameParts[0].trim() : 'Local Artist',
-        album: 'My Uploads',
-        src: url,
-        cover: '/art/default_album.webp',
-        duration: 180,
-        isLiked: true,
-        inPlaylist: true
-      };
-    });
-
-    setAllTracks((prev) => [...uploaded, ...prev]);
-    setActiveTab('library');
   };
 
   // Keyboard controls
@@ -1718,7 +1724,8 @@ export default function MusicPlayerApp() {
       <div className="laptop-stage">
         <audio ref={audioRef} crossOrigin="anonymous" preload="metadata" />
         <div className="auth-dialog">
-          <div style={{ textAlign: 'center', color: '#666666', fontSize: '13px' }}>
+          <div className="loading-row">
+            <Spinner size={18} label="Starting myPod" />
             Starting myPod...
           </div>
         </div>
@@ -1893,14 +1900,33 @@ export default function MusicPlayerApp() {
 
         {/* 2. Navigation & Search Header */}
         <div className="nav-header">
-          <form onSubmit={handleSearchSubmit} className="search-box">
-            <Search size={14} className="search-box-icon" />
+          <form onSubmit={handleSearchSubmit} className="search-box" role="search">
+            {isSearching
+              ? <Spinner size={14} className="search-box-icon" label="Searching" />
+              : <Search size={14} className="search-box-icon" />}
             <input
               type="text"
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => { setSearchQuery(e.target.value); setSuggestOpen(true); }}
+              onFocus={() => setSuggestOpen(true)}
+              onBlur={() => setSuggestOpen(false)}
+              onKeyDown={(e) => { suggestKeyRef.current?.(e); }}
               placeholder="Search lossless songs, artists, albums..."
               className="search-input"
+              role="combobox"
+              aria-expanded={suggestOpen}
+              aria-controls="search-suggest-list"
+              aria-autocomplete="list"
+            />
+            <SearchSuggestions
+              query={searchQuery}
+              open={suggestOpen}
+              keyRef={suggestKeyRef}
+              onClose={() => setSuggestOpen(false)}
+              onQuery={(text) => handleSearchSubmit(null, text)}
+              onPlay={(track) => playTrack(track)}
+              onArtist={(a) => openArtistProfile(a.name, a.cover, a.id)}
+              onAlbum={(alb) => openAlbumScreen({ id: alb.id, title: alb.title, artist: alb.artist, cover: alb.cover, year: alb.year })}
             />
           </form>
 
@@ -1966,13 +1992,6 @@ export default function MusicPlayerApp() {
             >
               <Settings size={13} />
               Settings
-            </button>
-            <button
-              onClick={() => setActiveTab('upload')}
-              className={`nav-tab-btn ${activeTab === 'upload' ? 'active' : ''}`}
-            >
-              <Upload size={13} />
-              Add Files
             </button>
           </div>
         </div>
@@ -2384,7 +2403,12 @@ export default function MusicPlayerApp() {
                 )}
               </div>
 
-              {searchFeedback && (
+              {isSearching ? (
+                <div className="loading-row">
+                  <Spinner size={20} label="Searching" />
+                  Searching for “{lastSearchedRef.current}”…
+                </div>
+              ) : searchFeedback && (
                 <div style={{ padding: '24px', textAlign: 'center', color: '#888888', fontSize: '13px' }}>
                   {searchFeedback}
                 </div>
@@ -3177,7 +3201,7 @@ export default function MusicPlayerApp() {
                       />
                     </div>
                     <div className="scrub-times">
-                      <span>{formatTime(currentTime)}</span>
+                      <span>{isBuffering ? <Spinner size={12} label="Loading song" /> : formatTime(currentTime)}</span>
                       <span>-{formatTime(duration - currentTime)}</span>
                     </div>
                   </div>
@@ -3286,7 +3310,9 @@ export default function MusicPlayerApp() {
                       {formatTime(currentTime)} / {formatTime(duration)}
                     </span>
                     <button onClick={togglePlayPause} className="transport-btn-round" style={{ width: '36px', height: '36px' }}>
-                      {isPlaying ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" style={{ marginLeft: '2px' }} />}
+                      {isBuffering
+                        ? <Spinner size={16} label="Loading song" />
+                        : isPlaying ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" style={{ marginLeft: '2px' }} />}
                     </button>
                   </div>
                 </div>
@@ -3426,7 +3452,8 @@ export default function MusicPlayerApp() {
               </div>
 
               {isLoadingAutomix ? (
-                <div style={{ padding: '24px', textAlign: 'center', color: '#666', fontSize: '13px' }}>
+                <div className="loading-row">
+                  <Spinner size={18} label="Loading automix" />
                   Loading intelligent automix suggestions...
                 </div>
               ) : automixTracks.length === 0 ? (
@@ -3946,28 +3973,6 @@ export default function MusicPlayerApp() {
             </div>
           )}
 
-          {/* --- 8. ADD LOCAL FILES --- */}
-          {activeTab === 'upload' && (
-            <div className="upload-stage">
-              <Upload size={48} color="#0284c7" style={{ marginBottom: '14px' }} />
-              <h2 style={{ fontSize: '20px', fontWeight: 800, color: '#ffffff', margin: '0 0 6px' }}>
-                Add Local Audio Files
-              </h2>
-              <p style={{ fontSize: '13px', color: '#888888', maxWidth: '420px', textAlign: 'center', lineHeight: 1.5, margin: '0 0 20px' }}>
-                Import MP3, FLAC, AAC, WAV, M4A, or OPUS files from your computer. Added songs will be instantly playable and can be added to Cover Flow.
-              </p>
-              <label className="btn-upload-label">
-                Select Audio Files
-                <input
-                  type="file"
-                  multiple
-                  accept="audio/*"
-                  onChange={handleFileUpload}
-                  style={{ display: 'none' }}
-                />
-              </label>
-            </div>
-          )}
         </div>
 
         {/* Persistent Bottom Transport Bar */}
@@ -4020,8 +4025,10 @@ export default function MusicPlayerApp() {
             <button onClick={handlePrev} className="transport-btn-plain" title="Previous Track">
               <SkipBack size={22} fill="currentColor" />
             </button>
-            <button onClick={togglePlayPause} className="transport-btn-round" title={isPlaying ? 'Pause' : 'Play'}>
-              {isPlaying ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" style={{ marginLeft: '2px' }} />}
+            <button onClick={togglePlayPause} className="transport-btn-round" title={isBuffering ? 'Loading…' : isPlaying ? 'Pause' : 'Play'}>
+              {isBuffering
+                ? <Spinner size={18} label="Loading song" />
+                : isPlaying ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" style={{ marginLeft: '2px' }} />}
             </button>
             <button onClick={handleNext} className="transport-btn-plain" title="Next Track">
               <SkipForward size={22} fill="currentColor" />

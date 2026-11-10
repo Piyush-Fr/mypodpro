@@ -5327,3 +5327,29 @@ html, body {
   .theme-modern * { scrollbar-color: #2a2a2a transparent; }
   .theme-classic * { scrollbar-color: #4f9fe6 #e9eef3; }
 }
+
+/* ==================== MOBILE GATE (app/layout.jsx) ==================== */
+/* Phones (narrow, or a touch screen turned sideways) see a coming-soon screen; the app is hidden. */
+.mobile-gate { display: none; }
+
+@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) {
+  .laptop-stage { display: none !important; }
+  .mobile-gate {
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 24px;
+    text-align: center;
+    background: #000000;
+    color: #ffffff;
+    font-family: var(--geist-font);
+  }
+  .mobile-gate-brand { font-size: 14px; font-weight: 700; color: #949494; }
+  .mobile-gate-title { font-size: 26px; font-weight: 700; line-height: 1.15; max-width: 14ch; }
+  .mobile-gate-text { font-size: 15px; line-height: 1.5; color: #b4b4b4; max-width: 30ch; }
+}

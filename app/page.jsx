@@ -14,6 +14,10 @@ import { authClient } from '@/lib/auth-client';
 import ArtistProfileView from '@/components/ArtistProfileView';
 import AlbumScreenView from '@/components/AlbumScreenView';
 import Spinner from '@/components/Spinner';
+import Logo from '@/components/Logo';
+
+// Bundled album covers shown as a Cover Flow on the sign-in screen (centre = index 1)
+const LOGIN_COVERS = ['/art/on_and_on.jpg', '/art/firefly.jpg', '/art/spectre.jpg'];
 import SearchSuggestions, { rememberSearch } from '@/components/SearchSuggestions';
 
 const DEFAULT_TRACKS = [
@@ -1745,101 +1749,121 @@ export default function MusicPlayerApp() {
       <audio ref={audioRef} crossOrigin="anonymous" preload="metadata" />
 
       {!authUser ? (
-        <div className="auth-dialog">
-          <div className="auth-icon-circle">
-            <Music2 size={26} color="#38bdf8" />
-          </div>
-          <h1 className="auth-heading">
-            {authMode === 'signup' ? 'Create your myPod Account' : 'Welcome to myPod'}
-          </h1>
-          <p className="auth-sub">
-            {authMode === 'signup' 
-              ? 'Sign up to sync your Cover Flow, favorites, and high-fidelity presets across devices.' 
-              : 'Sign in to access online lossless streaming, Cover Flow, and personalized high-fidelity audio presets.'}
-          </p>
-
-          {authError && (
-            <div style={{ background: '#2c0b0e', color: '#f87171', border: '1px solid #7f1d1d', borderRadius: '6px', padding: '8px 12px', fontSize: '12px', marginBottom: '14px', textAlign: 'center', width: '100%' }}>
-              {authError}
+        <div className="login-screen">
+          {/* Left: the product's own thing, a Cover Flow of the bundled albums */}
+          <div className="login-flow" aria-hidden="true">
+            <div className="login-flow-stage">
+              {LOGIN_COVERS.map((src, i) => {
+                const offset = i - 1;
+                return (
+                  <img
+                    key={src}
+                    src={src}
+                    alt=""
+                    className={`login-flow-cover ${offset === 0 ? 'center' : ''}`}
+                    style={{
+                      transform: offset === 0
+                        ? 'translateX(-50%) translateZ(80px)'
+                        : `translateX(calc(-50% + ${Math.sign(offset) * (62 + (Math.abs(offset) - 1) * 26)}%)) translateZ(${-120 - (Math.abs(offset) - 1) * 60}px) rotateY(${Math.sign(offset) * -58}deg)`,
+                      zIndex: 10 - Math.abs(offset),
+                      filter: `brightness(${1 - Math.abs(offset) * 0.25})`
+                    }}
+                  />
+                );
+              })}
             </div>
-          )}
+          </div>
 
-          <form onSubmit={handleSignIn} className="auth-form">
-            {authMode === 'signup' && (
-              <div className="auth-field">
-                <label className="auth-label">
-                  YOUR NAME
-                </label>
+          {/* Right: the form */}
+          <div className="login-panel">
+            <div className="login-brand">
+              <Logo size={36} />
+              <span className="login-wordmark">myPod</span>
+            </div>
+
+            <h1 className="login-title">
+              {authMode === 'signup' ? 'Create your myPod account' : 'Sign in to myPod'}
+            </h1>
+            <p className="login-sub">
+              {authMode === 'signup'
+                ? 'Save your Cover Flow, liked songs and sound settings to your account.'
+                : 'Your Cover Flow, liked songs and sound settings, on any computer.'}
+            </p>
+
+            {authError && (
+              <p className="login-error" role="alert">{authError}</p>
+            )}
+
+            <form onSubmit={handleSignIn} className="login-form">
+              {authMode === 'signup' && (
+                <div className="login-field">
+                  <label className="login-label" htmlFor="login-name">Name</label>
+                  <input
+                    id="login-name"
+                    type="text"
+                    autoComplete="name"
+                    value={nameInput}
+                    onChange={(e) => setNameInput(e.target.value)}
+                    className="login-input"
+                    required
+                  />
+                </div>
+              )}
+              <div className="login-field">
+                <label className="login-label" htmlFor="login-email">Email</label>
                 <input
-                  type="text"
-                  value={nameInput}
-                  onChange={(e) => setNameInput(e.target.value)}
-                  placeholder="Alex"
-                  className="auth-input"
+                  id="login-email"
+                  type="email"
+                  autoComplete="email"
+                  value={emailInput}
+                  onChange={(e) => setEmailInput(e.target.value)}
+                  className="login-input"
                   required
                 />
               </div>
-            )}
-            <div className="auth-field">
-              <label className="auth-label">
-                EMAIL ADDRESS
-              </label>
-              <input
-                type="email"
-                value={emailInput}
-                onChange={(e) => setEmailInput(e.target.value)}
-                placeholder="name@example.com"
-                className="auth-input"
-                required
-              />
-            </div>
-            <div className="auth-field">
-              <label className="auth-label">
-                PASSWORD
-              </label>
-              <input
-                type="password"
-                value={passwordInput}
-                onChange={(e) => setPasswordInput(e.target.value)}
-                placeholder="••••••••"
-                className="auth-input"
-                required
-              />
-            </div>
-            <button type="submit" className="auth-btn-primary" disabled={isSubmittingAuth}>
-              {isSubmittingAuth 
-                ? 'Connecting...' 
-                : authMode === 'signup' 
-                  ? 'Create Account & Sign In' 
-                  : 'Sign In & Keep Logged In'}
+              <div className="login-field">
+                <label className="login-label" htmlFor="login-password">Password</label>
+                <input
+                  id="login-password"
+                  type="password"
+                  autoComplete={authMode === 'signup' ? 'new-password' : 'current-password'}
+                  value={passwordInput}
+                  onChange={(e) => setPasswordInput(e.target.value)}
+                  className="login-input"
+                  minLength={6}
+                  aria-describedby={authMode === 'signup' ? 'login-password-rule' : undefined}
+                  required
+                />
+                {authMode === 'signup' && (
+                  <span className="login-hint" id="login-password-rule">At least 6 characters</span>
+                )}
+              </div>
+              <button type="submit" className="login-btn-primary" disabled={isSubmittingAuth}>
+                {isSubmittingAuth && <Spinner size={16} label="Signing in" />}
+                {isSubmittingAuth
+                  ? (authMode === 'signup' ? 'Creating account…' : 'Signing in…')
+                  : (authMode === 'signup' ? 'Create account' : 'Sign in')}
+              </button>
+            </form>
+
+            <button type="button" onClick={handleGuestSignIn} className="login-btn-guest">
+              Continue as guest
             </button>
-          </form>
 
-          {/* Mode Switcher */}
-          <div style={{ marginTop: '12px', textAlign: 'center' }}>
-            <button
-              type="button"
-              onClick={() => {
-                setAuthMode((m) => (m === 'signin' ? 'signup' : 'signin'));
-                setAuthError('');
-              }}
-              style={{ background: 'none', border: 'none', color: '#38bdf8', fontSize: '12px', fontWeight: 600, cursor: 'pointer', padding: '4px' }}
-            >
-              {authMode === 'signin' 
-                ? "Don't have an account? Sign up" 
-                : 'Already have an account? Sign in'}
-            </button>
+            <p className="login-switch">
+              {authMode === 'signin' ? 'New to myPod?' : 'Already have an account?'}{' '}
+              <button
+                type="button"
+                className="login-link"
+                onClick={() => {
+                  setAuthMode((m) => (m === 'signin' ? 'signup' : 'signin'));
+                  setAuthError('');
+                }}
+              >
+                {authMode === 'signin' ? 'Create an account' : 'Sign in'}
+              </button>
+            </p>
           </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', margin: '14px 0', gap: '8px', width: '100%' }}>
-            <div style={{ flex: 1, height: '1px', background: '#222222' }} />
-            <span style={{ fontSize: '10.5px', color: '#666666', fontWeight: 600 }}>OR</span>
-            <div style={{ flex: 1, height: '1px', background: '#222222' }} />
-          </div>
-
-          <button onClick={handleGuestSignIn} className="auth-btn-guest">
-            Continue as Guest Listener
-          </button>
         </div>
       ) : (
         <div className="classic-window">
@@ -1847,6 +1871,7 @@ export default function MusicPlayerApp() {
         <div className="status-bar">
           <div className="status-left">
             <span className="status-brand">
+              <Logo size={16} />
               myPod Pro
             </span>
             <span className="status-divider">|</span>

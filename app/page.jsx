@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { 
   Play, Pause, SkipBack, SkipForward, Volume2, Search, 
   Disc, Heart, LogOut, User, Music2, FolderHeart, 
-  ChevronLeft, ChevronRight, Sliders, Settings, Radio, Sparkles, Activity, Gauge,
+  ChevronLeft, ChevronRight, Sliders, Settings, Radio, Sparkles, Gauge,
   ListMusic, Plus, Trash2, ArrowUp, ArrowDown, History, Sun, Moon, Palette, Zap,
   Shuffle, RotateCcw, Disc3, Star
 } from 'lucide-react';
@@ -87,22 +87,6 @@ function AppleMusicLosslessBadge({ onClick, className = '' }) {
   );
 }
 
-// Graphic Equalizer Frequencies & Labels
-const EQ_FREQUENCIES = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
-const EQ_LABELS = ['32Hz', '64Hz', '125Hz', '250Hz', '500Hz', '1kHz', '2kHz', '4kHz', '8kHz', '16kHz'];
-
-// Studio Equalizer Presets
-const EQ_PRESETS = {
-  'Flat': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-  'Bass Boost': [5.5, 4.5, 3.2, 2.0, 0.5, 0, 0, 0, 0, 0],
-  'Treble Boost': [0, 0, 0, 0, 0, 1.0, 2.5, 4.0, 5.0, 6.0],
-  'Rock': [4.5, 3.0, -1.0, -2.0, -0.5, 2.0, 3.5, 4.5, 4.0, 3.5],
-  'Pop': [-1.5, 1.5, 3.5, 4.0, 2.5, -0.5, -1.5, -1.5, 1.0, 2.5],
-  'Electronic': [4.5, 4.0, 1.5, 0, -1.5, 1.5, 0.5, 2.0, 3.5, 4.0],
-  'Classical': [4.0, 3.0, 2.5, 2.0, -1.5, -1.5, 0, 2.0, 3.0, 3.5],
-  'Vocal / Acoustic': [-2.0, -1.5, 0, 2.0, 3.5, 3.5, 2.0, 0.5, -0.5, -1.5]
-};
-
 // Modern theme accent: the most vivid hue in a cover, at a fixed lightness that reads on black.
 // Returns null for greyscale covers (the CSS default hue is used). Throws on a tainted canvas.
 function pickCoverAccent(img) {
@@ -144,10 +128,6 @@ const DEFAULT_AUDIO_SETTINGS = {
   smartFade: true, // Smooth gain ramp on pause/play
   autoplay: true, // Automix radio recommendations when queue finishes
   playbackSpeed: 1.0, // 0.75x to 2.0x
-  eqEnabled: true,
-  eqAutoHeadroom: true,
-  eqPreset: 'Flat',
-  eqGains: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
   loudnessLevel: 'normal' // 'off' | 'normal' | 'loud' | 'quiet'
 };
 
@@ -509,8 +489,6 @@ export default function MusicPlayerApp() {
   // Audio refs & Web Audio API DSP Nodes
   const audioRef = useRef(null);
   const audioContextRef = useRef(null);
-  const eqFiltersRef = useRef([]);
-  const headroomGainRef = useRef(null);
   const compressorRef = useRef(null);
   const fadeGainRef = useRef(null);
   const isAudioInited = useRef(false);
@@ -652,24 +630,6 @@ export default function MusicPlayerApp() {
 
       const source = ctx.createMediaElementSource(audio);
 
-      // Create 10-band Biquad Filters
-      const filters = EQ_FREQUENCIES.map((freq, i) => {
-        const f = ctx.createBiquadFilter();
-        f.type = i === 0 ? 'lowshelf' : i === EQ_FREQUENCIES.length - 1 ? 'highshelf' : 'peaking';
-        f.frequency.value = freq;
-        f.Q.value = 1.41;
-        f.gain.value = settings.eqEnabled ? (settings.eqGains[i] || 0) : 0;
-        return f;
-      });
-      eqFiltersRef.current = filters;
-
-      // Auto Headroom Gain Node
-      const headroom = ctx.createGain();
-      const maxBoost = Math.max(0, ...settings.eqGains);
-      const headroomDb = (settings.eqEnabled && settings.eqAutoHeadroom && maxBoost > 0) ? maxBoost : 0;
-      headroom.gain.value = Math.pow(10, -headroomDb / 20);
-      headroomGainRef.current = headroom;
-
       // Dynamics Compressor Node for Loudness Normalization
       const comp = ctx.createDynamicsCompressor();
       compressorRef.current = comp;
@@ -679,14 +639,8 @@ export default function MusicPlayerApp() {
       fade.gain.value = 1.0;
       fadeGainRef.current = fade;
 
-      // Connect: source -> filter0 -> ... -> filter9 -> headroom -> compressor -> fade -> destination
-      let currentConn = source;
-      filters.forEach((filter) => {
-        currentConn.connect(filter);
-        currentConn = filter;
-      });
-      currentConn.connect(headroom);
-      headroom.connect(comp);
+      // Connect: source -> compressor -> fade -> destination
+      source.connect(comp);
       comp.connect(fade);
       fade.connect(ctx.destination);
 
@@ -694,28 +648,14 @@ export default function MusicPlayerApp() {
     } catch (err) {
       console.warn('Web Audio DSP initialization note:', err);
     }
-  }, [settings.eqEnabled, settings.eqGains, settings.eqAutoHeadroom]);
+  }, []);
 
   // Synchronize DSP parameters when settings change
   useEffect(() => {
     const ctx = audioContextRef.current;
     if (!ctx) return;
 
-    // 1. Equalizer Filter Gains
-    eqFiltersRef.current.forEach((filter, i) => {
-      const targetGain = settings.eqEnabled ? (settings.eqGains[i] ?? 0) : 0;
-      filter.gain.setTargetAtTime(targetGain, ctx.currentTime, 0.05);
-    });
-
-    // 2. Auto Headroom Preamp
-    if (headroomGainRef.current) {
-      const maxBoost = Math.max(0, ...settings.eqGains);
-      const headroomDb = (settings.eqEnabled && settings.eqAutoHeadroom && maxBoost > 0) ? maxBoost : 0;
-      const targetGain = Math.pow(10, -headroomDb / 20);
-      headroomGainRef.current.gain.setTargetAtTime(targetGain, ctx.currentTime, 0.05);
-    }
-
-    // 3. Dynamics Compressor (Loudness Normalization)
+    // Dynamics Compressor (Loudness Normalization)
     if (compressorRef.current) {
       const comp = compressorRef.current;
       if (settings.loudnessLevel === 'off') {
@@ -3328,18 +3268,12 @@ export default function MusicPlayerApp() {
                   {/* Live Audio Engine Badges & View Queue CTA */}
                   <div className="np-audio-footer-row">
                     <div className="np-audio-specs-line">
-                      {settings.eqEnabled && (
-                        <span className="np-spec-text">EQ {settings.eqPreset}</span>
-                      )}
                       {settings.crossfadeSeconds > 0 && (
-                        <>
-                          <span className="np-spec-dot">•</span>
-                          <span className="np-spec-text">Crossfade {settings.crossfadeSeconds}s</span>
-                        </>
+                        <span className="np-spec-text">Crossfade {settings.crossfadeSeconds}s</span>
                       )}
                       {settings.playbackSpeed !== 1.0 && (
                         <>
-                          <span className="np-spec-dot">•</span>
+                          {settings.crossfadeSeconds > 0 && <span className="np-spec-dot">•</span>}
                           <span className="np-spec-text">{settings.playbackSpeed}x Speed</span>
                         </>
                       )}
@@ -3776,7 +3710,7 @@ export default function MusicPlayerApp() {
                     Audio Engine & Preferences
                   </h1>
                   <p className="settings-main-sub">
-                    Configure online lossless streaming bitrates, visual themes, 10-band graphic equalizer, auto headroom preamp, crossfade blending, and smart fade transitions.
+                    Configure online lossless streaming bitrates, visual themes, loudness, crossfade blending, and smart fade transitions.
                   </p>
                 </div>
 
@@ -3928,100 +3862,6 @@ export default function MusicPlayerApp() {
                     >
                       <div className="toggle-handle" />
                     </button>
-                  </div>
-                </div>
-
-                {/* 3. 10-Band Graphic Equalizer */}
-                <div className="settings-card">
-                  <div className="settings-card-head">
-                    <div>
-                      <h3 className="settings-card-title">
-                        <Activity size={16} color="#38bdf8" />
-                        10-Band Graphic Equalizer (Web Audio DSP)
-                      </h3>
-                      <p className="settings-card-desc">
-                        Active BiquadFilterNodes (lowshelf, peaking, highshelf) with real-time frequency shaping.
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setSettings((s) => ({ ...s, eqEnabled: !s.eqEnabled }))}
-                      className={`toggle-btn ${settings.eqEnabled ? 'on' : ''}`}
-                    >
-                      <div className="toggle-handle" />
-                    </button>
-                  </div>
-
-                  {/* Auto Headroom Toggle */}
-                  <div className="switch-row" style={{ padding: '8px 0 14px' }}>
-                    <div>
-                      <div className="switch-label-title">Auto Headroom Preamp</div>
-                      <div className="switch-label-note">
-                        Calculates maximum positive EQ boost and dynamically attenuates master preamp to prevent digital clipping distortion.
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setSettings((s) => ({ ...s, eqAutoHeadroom: !s.eqAutoHeadroom }))}
-                      className={`toggle-btn ${settings.eqAutoHeadroom ? 'on' : ''}`}
-                    >
-                      <div className="toggle-handle" />
-                    </button>
-                  </div>
-
-                  {/* Presets Bar */}
-                  <div className="eq-preset-bar">
-                    {Object.keys(EQ_PRESETS).map((pName) => (
-                      <button
-                        key={pName}
-                        onClick={() => {
-                          setSettings((s) => ({
-                            ...s,
-                            eqPreset: pName,
-                            eqGains: [...EQ_PRESETS[pName]]
-                          }));
-                        }}
-                        className={`eq-preset-chip ${settings.eqPreset === pName ? 'active' : ''}`}
-                      >
-                        {pName}
-                      </button>
-                    ))}
-                  </div>
-
-                  {/* 10 Vertical Sliders Rack */}
-                  <div className="eq-rack">
-                    {EQ_FREQUENCIES.map((freq, idx) => {
-                      const gain = settings.eqGains[idx] || 0;
-                      return (
-                        <div key={freq} className="eq-band-col">
-                          <span className={`eq-band-gain ${gain === 0 ? 'zero' : ''}`}>
-                            {gain > 0 ? `+${gain.toFixed(1)}` : gain.toFixed(1)}
-                          </span>
-                          <input
-                            type="range"
-                            min="-12"
-                            max="12"
-                            step="0.5"
-                            value={gain}
-                            disabled={!settings.eqEnabled}
-                            onChange={(e) => {
-                              const val = parseFloat(e.target.value);
-                              setSettings((s) => {
-                                const newGains = [...s.eqGains];
-                                newGains[idx] = val;
-                                return {
-                                  ...s,
-                                  eqPreset: 'Custom',
-                                  eqGains: newGains
-                                };
-                              });
-                            }}
-                            className="eq-band-slider"
-                          />
-                          <span className="eq-band-label">{EQ_LABELS[idx]}</span>
-                        </div>
-                      );
-                    })}
                   </div>
                 </div>
 

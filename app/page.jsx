@@ -1866,7 +1866,7 @@ export default function MusicPlayerApp() {
           </div>
         </div>
       ) : (
-        <div className="classic-window">
+        <div className="classic-window" data-tab={activeTab}>
         {/* 1. Status Bar */}
         <div className="status-bar">
           <div className="status-left">
@@ -1961,28 +1961,28 @@ export default function MusicPlayerApp() {
               className={`nav-tab-btn ${activeTab === 'cover_flow' ? 'active' : ''}`}
             >
               <Disc size={13} />
-              Cover Flow ({coverFlowAlbums.length})
+              <span className="nav-tab-label">Cover Flow</span><span className="nav-tab-count"> ({coverFlowAlbums.length})</span>
             </button>
             <button
               onClick={() => setActiveTab('now_playing')}
               className={`nav-tab-btn ${activeTab === 'now_playing' ? 'active' : ''}`}
             >
               <Play size={13} />
-              Now Playing
+              <span className="nav-tab-label">Now Playing</span>
             </button>
             <button
               onClick={() => setActiveTab('queue')}
-              className={`nav-tab-btn ${activeTab === 'queue' ? 'active' : ''}`}
+              className={`nav-tab-btn nav-tab-optional ${activeTab === 'queue' ? 'active' : ''}`}
             >
               <ListMusic size={13} />
-              Queue {manualQueue.length > 0 && `(${manualQueue.length})`}
+              <span className="nav-tab-label">Queue</span>{manualQueue.length > 0 && <span className="nav-tab-count"> ({manualQueue.length})</span>}
             </button>
             <button
               onClick={() => setActiveTab('search')}
               className={`nav-tab-btn ${activeTab === 'search' ? 'active' : ''}`}
             >
               <Search size={13} />
-              Search {searchResults.length > 0 && `(${searchResults.length})`}
+              <span className="nav-tab-label">Search</span>{searchResults.length > 0 && <span className="nav-tab-count"> ({searchResults.length})</span>}
             </button>
             <button
               onClick={() => {
@@ -1999,24 +1999,24 @@ export default function MusicPlayerApp() {
                   description: 'All your favorite hearted songs, automatically synchronized with Cover Flow.'
                 });
               }}
-              className={`nav-tab-btn ${(activeTab === 'album' && selectedAlbum?.id === 'liked-music-playlist') || activeTab === 'playlists' ? 'active' : ''}`}
+              className={`nav-tab-btn nav-tab-optional ${(activeTab === 'album' && selectedAlbum?.id === 'liked-music-playlist') || activeTab === 'playlists' ? 'active' : ''}`}
             >
               <FolderHeart size={13} />
-              Liked Music ({likedSongs.length})
+              <span className="nav-tab-label">Liked Music</span><span className="nav-tab-count"> ({likedSongs.length})</span>
             </button>
             <button
               onClick={() => setActiveTab('library')}
               className={`nav-tab-btn ${activeTab === 'library' ? 'active' : ''}`}
             >
               <Music2 size={13} />
-              Library ({allTracks.length})
+              <span className="nav-tab-label">Library</span><span className="nav-tab-count"> ({allTracks.length})</span>
             </button>
             <button
               onClick={() => setActiveTab('settings')}
               className={`nav-tab-btn ${activeTab === 'settings' ? 'active' : ''}`}
             >
               <Settings size={13} />
-              Settings
+              <span className="nav-tab-label">Settings</span>
             </button>
           </div>
         </div>
@@ -3229,6 +3229,35 @@ export default function MusicPlayerApp() {
                       <span>{isBuffering ? <Spinner size={12} label="Loading song" /> : formatTime(currentTime)}</span>
                       <span>-{formatTime(duration - currentTime)}</span>
                     </div>
+                  </div>
+
+                  {/* Phone-only transport (desktop has the bottom transport bar) */}
+                  <div className="np-mobile-controls">
+                    <button type="button" onClick={() => setActiveTab('queue')} className="np-mobile-side" aria-label="Open queue">
+                      <ListMusic size={20} />
+                    </button>
+                    <button type="button" onClick={handlePrev} className="np-mobile-skip" aria-label="Previous track">
+                      <SkipBack size={26} fill="currentColor" />
+                    </button>
+                    <button type="button" onClick={togglePlayPause} className="np-mobile-play" aria-label={isBuffering ? 'Loading' : isPlaying ? 'Pause' : 'Play'}>
+                      {isBuffering
+                        ? <Spinner size={24} label="Loading song" />
+                        : isPlaying ? <Pause size={28} fill="currentColor" /> : <Play size={28} fill="currentColor" style={{ marginLeft: '3px' }} />}
+                    </button>
+                    <button type="button" onClick={handleNext} className="np-mobile-skip" aria-label="Next track">
+                      <SkipForward size={26} fill="currentColor" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => toggleLikeTrack(currentTrack.id, currentTrack)}
+                      className="np-mobile-side"
+                      aria-label={allTracks.some((t) => t.id === currentTrack.id && t.isLiked) ? 'Remove from Cover Flow' : 'Add to Cover Flow'}
+                    >
+                      <Heart
+                        size={20}
+                        fill={allTracks.some((t) => t.id === currentTrack.id && t.isLiked) ? 'currentColor' : 'none'}
+                      />
+                    </button>
                   </div>
 
                   {/* Live Audio Engine Badges & View Queue CTA */}

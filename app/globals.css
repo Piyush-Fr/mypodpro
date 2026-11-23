@@ -5733,3 +5733,9 @@ html, body {
   .nav-tabs::-webkit-scrollbar { display: none; }
   .nav-tab-btn { flex: none; }
 }
+
+/* Now Playing cover swipe (page.jsx coverSwipeHandlers): horizontal swipes go to the app,
+   vertical scrolling still works. */
+.np-flow,
+.now-playing-cover-stage { touch-action: pan-y; user-select: none; -webkit-user-select: none; }
+.np-flow-card:not(.current):hover img { filter: brightness(1.15); }

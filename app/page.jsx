@@ -1715,6 +1715,70 @@ export default function MusicPlayerApp() {
     ];
   }, [currentTrack, playedHistory, manualQueue, automixTracks]);
 
+  // Play a specific cover from the Now Playing flow, not just one step.
+  // Forward: songs queued before it are skipped (dropped, as Next would drop them one by one).
+  // Back: the songs after it in history, plus the current one, return to the front of the queue
+  // (what Previous does for a single step).
+  const jumpToFlowTrack = useCallback((track, offset) => {
+    if (!track || !currentTrack || offset === 0) return;
+    if (offset > 0) {
+      const qi = manualQueue.findIndex((t) => t.id === track.id);
+      if (qi >= 0) {
+        setManualQueue((q) => q.slice(qi + 1));
+      } else {
+        const ai = automixTracks.findIndex((t) => t.id === track.id);
+        if (ai < 0) return;
+        setManualQueue([]);
+        setAutomixTracks((a) => a.slice(ai + 1));
+      }
+      playTrack(track, { shouldSwitchTab: false, shouldSeedQueue: false });
+      return;
+    }
+    const hi = playedHistory.map((t) => t.id).lastIndexOf(track.id);
+    if (hi < 0) return;
+    const returning = [...playedHistory.slice(hi + 1), currentTrack].filter((t) => t.id !== track.id);
+    setPlayedHistory((h) => h.slice(0, hi));
+    if (manualQueue.length > 0) setManualQueue((q) => [...returning, ...q]);
+    else setAutomixTracks((a) => [...returning, ...a]);
+    playTrack(track, { shouldSwitchTab: false, shouldSeedQueue: false, isBackNavigation: true });
+  }, [currentTrack, manualQueue, automixTracks, playedHistory, playTrack]);
+
+  // Swipe on the Now Playing cover: left = next song, right = previous. The cover follows the
+  // finger while dragging; a swipe suppresses the click that follows it.
+  const swipeRef = useRef({ x: 0, y: 0, active: false, swiped: false });
+  const coverSwipeHandlers = {
+    onPointerDown: (e) => {
+      swipeRef.current = { x: e.clientX, y: e.clientY, active: true, swiped: false };
+    },
+    onPointerMove: (e) => {
+      const s = swipeRef.current;
+      if (!s.active) return;
+      const dx = e.clientX - s.x;
+      if (Math.abs(dx) > Math.abs(e.clientY - s.y)) {
+        e.currentTarget.style.transition = 'none';
+        e.currentTarget.style.transform = `translateX(${dx * 0.35}px)`;
+      }
+    },
+    onPointerUp: (e) => {
+      const s = swipeRef.current;
+      if (!s.active) return;
+      s.active = false;
+      const dx = e.clientX - s.x;
+      const dy = e.clientY - s.y;
+      e.currentTarget.style.transition = 'transform 0.25s ease';
+      e.currentTarget.style.transform = '';
+      if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+        s.swiped = true;
+        if (dx < 0) handleNext();
+        else handlePrev(false);
+      }
+    },
+    onPointerCancel: (e) => {
+      swipeRef.current.active = false;
+      e.currentTarget.style.transform = '';
+    }
+  };
+
   const formatTime = (secs) => {
     if (!secs || isNaN(secs) || secs < 0) return '0:00';
     const m = Math.floor(secs / 60);
@@ -3047,7 +3111,7 @@ export default function MusicPlayerApp() {
               <div className="now-playing-stage">
                 {settings.theme === 'modern' ? (
                   /* Cover Flow of recent / current / up-next; covers slide between slots on track change */
-                  <div className="np-flow" role="group" aria-label="Now playing cover flow">
+                  <div className="np-flow" role="group" aria-label="Now playing cover flow. Swipe or pick a cover to change song" {...coverSwipeHandlers}>
                     {nowPlayingFlow.map(({ track, offset }) => {
                       const dist = Math.abs(offset);
                       const side = Math.sign(offset);
@@ -3064,12 +3128,12 @@ export default function MusicPlayerApp() {
                             filter: `brightness(${1 - dist * 0.18})`
                           }}
                           onClick={() => {
-                            if (offset < 0) handlePrev(false);
-                            else if (offset > 0) handleNext();
+                            if (swipeRef.current.swiped) { swipeRef.current.swiped = false; return; }
+                            jumpToFlowTrack(track, offset);
                           }}
                           tabIndex={offset === 0 ? -1 : 0}
-                          aria-label={offset === 0 ? `Now playing: ${track.title}` : `${offset < 0 ? 'Previous' : 'Next'}: ${track.title}`}
-                          title={offset === 0 ? undefined : `${offset < 0 ? 'Previous' : 'Next'}: ${track.title}`}
+                          aria-label={offset === 0 ? `Now playing: ${track.title}` : `Play ${track.title}`}
+                          title={offset === 0 ? undefined : `Play ${track.title}`}
                         >
                           <img
                             src={track.cover || '/art/default_album.webp'}
@@ -3088,13 +3152,14 @@ export default function MusicPlayerApp() {
                   </div>
                 ) : (
                 /* 3D Angled Cover Art with Mirror Reflection & Glass Sheen */
-                <div className="now-playing-cover-stage">
+                <div className="now-playing-cover-stage" {...coverSwipeHandlers}>
                   <div className="now-playing-cover-3d">
                     <div className="now-playing-art-wrap">
                       <img
                         src={currentTrack.cover || '/art/default_album.webp'}
                         alt={currentTrack.title}
                         className="now-playing-art-img"
+                        draggable={false}
                         width={340}
                         height={340}
                         fetchPriority="high"

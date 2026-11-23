@@ -5498,19 +5498,23 @@ html, body {
 
 @media (max-width: 1023px) {
   html, body { overscroll-behavior: none; }
+  /* Lock the page: only inner panes scroll, so mobile browsers (Brave's bottom bar especially)
+     never collapse or expand their toolbars and the app's height never changes under it. */
+  body { position: fixed; inset: 0; width: 100%; overflow: hidden; }
+  .laptop-stage .main-stage * { overscroll-behavior: contain; }
 
   /* --- Shell --- */
-  .laptop-stage { padding: 0 !important; height: 100dvh; align-items: stretch; }
+  .laptop-stage { padding: 0 !important; height: 100%; align-items: stretch; }
   .laptop-stage .classic-window {
     max-width: none;
     max-height: none;
     min-height: 0;
-    height: 100dvh;
+    height: 100%;
     border-radius: 0 !important;
     border: 0 !important;
     box-shadow: none !important;
-    contain: none; /* contain: layout would trap the fixed tab bar */
-    padding-bottom: calc(60px + env(safe-area-inset-bottom));
+    contain: none;
+    padding-bottom: 0;
   }
 
   .laptop-stage .status-bar {
@@ -5528,18 +5532,21 @@ html, body {
   .laptop-stage .btn-theme-toggle,
   .laptop-stage .btn-small-gray { height: 32px; padding: 0 12px; }
 
-  .laptop-stage .nav-header { height: auto; min-height: 0; padding: 8px 16px 10px; gap: 0; }
-  .laptop-stage .search-box { width: 100%; }
+  /* Everything is in the window's flex column (no fixed positioning):
+     top bar, search, content, mini player, tabs. nav-header dissolves so its two
+     children (search, tabs) can sit at the top and bottom. */
+  .laptop-stage .nav-header { display: contents; }
+  .laptop-stage .search-box { order: 1; flex: none; width: auto; margin: 8px 16px 10px; }
+  .laptop-stage .main-stage { order: 2; }
+  .laptop-stage .transport-bar { order: 3; }
   .laptop-stage .search-input { height: 40px; font-size: 16px; }
   .laptop-stage .search-suggest { width: calc(100vw - 32px); max-height: 60dvh; }
 
   /* --- Bottom tab bar --- */
   .laptop-stage .nav-tabs {
-    position: fixed;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    z-index: 200;
+    order: 4;
+    flex: none;
+    position: static;
     display: grid;
     grid-template-columns: repeat(5, 1fr);
     gap: 0;
@@ -5618,13 +5625,13 @@ html, body {
   .laptop-stage .classic-window[data-tab="now_playing"] .transport-bar { display: none; }
   /* Classic: the angled single cover, sized for a phone */
   .laptop-stage .now-playing-cover-stage { width: 100%; height: auto; perspective: none; }
-  .laptop-stage .now-playing-cover-3d { width: clamp(120px, calc(100dvh - 500px), min(68vw, 280px)); height: clamp(120px, calc(100dvh - 500px), min(68vw, 280px)); transform: none; }
+  .laptop-stage .now-playing-cover-3d { width: clamp(120px, calc(100svh - 500px), min(68vw, 280px)); height: clamp(120px, calc(100svh - 500px), min(68vw, 280px)); transform: none; }
   .laptop-stage .np-audio-badge-row { display: none; }
   .laptop-stage .now-playing-cover-3d:hover { transform: none; }
   .laptop-stage .now-playing-reflection { display: none; }
   /* Modern: the Cover Flow */
   /* Cover height follows the free space so title, scrubber and controls fit without scrolling */
-  .laptop-stage .np-flow { flex: none; height: clamp(120px, calc(100dvh - 480px), min(62vw, 260px)); max-height: none; margin-bottom: 20px; }
+  .laptop-stage .np-flow { flex: none; height: clamp(120px, calc(100svh - 480px), min(62vw, 260px)); max-height: none; margin-bottom: 20px; }
 
   .laptop-stage .np-mobile-controls {
     display: flex;
